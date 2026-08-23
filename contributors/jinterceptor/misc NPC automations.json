@@ -1,0 +1,912 @@
+{
+  "type": "lancer-automations-pack",
+  "version": 1,
+  "name": "Road to Midnight Automations - LA 4.1.8 - Public",
+  "exportDate": "2026-08-23T00:00:00.000Z",
+  "itemReactions": {
+    "npc-rebake_npcf_abjure_priest": {
+      "itemType": "any",
+      "reactions": [
+        {
+          "reactionPath": "",
+          "triggers": [
+            "onTechHit"
+          ],
+          "evaluate": "return !!triggerData.targets?.[0]?.target;",
+          "comments": "LA 4.1.8 review: current trigger/API usage remains valid. Updated for Lancer Automations 4.1.8. Optional Sequencer/Lancer Weapon FX presentation is guarded so missing FX never blocks mechanics. LA 4.1 implementation. Uses tierValue and applyMark. Stores only the tier-scaled Heat required by the companion onRoll listener and automatically expires at the end of the target's next turn.",
+          "triggerDescription": "",
+          "effectDescription": "On a successful Abjure tech attack, the target takes tier-scaled Heat whenever they make an attack roll until the end of their next turn.",
+          "isReaction": false,
+          "actionType": "Automation",
+          "frequency": "Unlimited",
+          "checkReaction": false,
+          "requireCanProvoke": false,
+          "checkUsage": false,
+          "autoActivate": true,
+          "awaitActivationCompletion": true,
+          "onlyOnSourceMatch": true,
+          "activationType": "code",
+          "activationMode": "after",
+          "activationMacro": "",
+          "activationCode": "// Optional presentation layer, following the guarded Sequencer/Lancer Weapon FX pattern used by the Lancer Automations 4.1.8 defaults.\ntry {\n    const rtmFxApi = game.modules.get(\"lancer-weapon-fx\")?.api;\n    if (rtmFxApi && globalThis.Sequencer && typeof Sequence !== \"undefined\") {\n        const rtmFxFiles = [\n            \"modules/lancer-weapon-fx/soundfx/TechWarn.ogg\",\n            \"jb2a.zoning.inward.circle.once.bluegreen.01.01\"\n        ];\n        await Sequencer.Preloader.preloadForClients(rtmFxFiles);\n        await new Sequence()\n            .sound()\n                .file(rtmFxFiles[0])\n                .volume(rtmFxApi.getEffectVolume(0.65))\n            .effect()\n                .file(rtmFxFiles[1])\n                .atLocation(triggerData.targets?.[0]?.target ?? triggerData.triggeringToken ?? reactorToken)\n                .scaleToObject(1.5)\n                .filter(\"Glow\", { color: 0x7e8cff })\n                .play();\n    }\n}\ncatch (error) {\n    console.warn(\"Road to Midnight automation FX skipped; mechanics continue normally.\", error);\n}\n\nconst target = triggerData.targets[0].target;\n\n// -----------------------------------------------------------------------------\n// TIER-SCALED HEAT\n// -----------------------------------------------------------------------------\n// {2/3/4} = Tier 1 / Tier 2 / Tier 3\n\nconst heat = api.tierValue(\n    reactorToken,\n    [2, 3, 4]\n);\n\n// -----------------------------------------------------------------------------\n// REFRESH THIS PRIEST'S ABJURE ON THIS TARGET\n// -----------------------------------------------------------------------------\n// applyMark() stamps the effect with:\n//\n//     abjureSourceId: reactorToken.id\n//\n// This lets multiple Priests maintain independent Abjure effects while a\n// repeated hit from the SAME Priest on the SAME target simply refreshes it.\n\nconst existingAbjures = api.findEffectsOnToken(\n    target,\n    \"Abjure\",\n    {\n        extraFlags: {\n            abjureSourceId: reactorToken.id\n        }\n    }\n);\n\nfor (const existingAbjure of existingAbjures) {\n    await api.deleteEffect(\n        target,\n        existingAbjure\n    );\n}\n\n// -----------------------------------------------------------------------------\n// APPLY ABJURE\n// -----------------------------------------------------------------------------\n// The duration is tied to the affected character rather than the Priest.\n//\n// label: \"end\" + turns: 1 means the effect lasts until the END of the target's\n// next turn. LA 4.1 automatically performs the necessary current-turn\n// adjustment when the effect is applied during that target's turn.\n\nawait api.applyMark(\n    reactorToken,\n    [target],\n    {\n        effect: {\n            name: \"Abjure\",\n            icon: item.img,\n            isCustom: true\n        },\n\n        note: `${heat} Heat each time this character makes an attack roll.`,\n\n        duration: {\n            label: \"end\",\n            turns: 1,\n            rounds: 0,\n            overrideTurnOriginId: target.id\n        },\n\n        flagKey: \"abjureSourceId\",\n\n        extraOptions: {\n            abjureHeat: heat\n        }\n    }\n);",
+          "onInit": "",
+          "onMessage": "",
+          "triggerSelf": true,
+          "triggerOther": false,
+          "outOfCombat": true,
+          "dispositionFilter": null
+        }
+      ]
+    },
+    "npc-rebake_npcf_assault_rifle_striker_grunt": {
+      "itemType": "any",
+      "reactions": [
+        {
+          "reactionPath": "",
+          "triggers": [
+            "onHit"
+          ],
+          "evaluate": "const hit = triggerData.targets?.[0];\n\nif (!hit?.target || !hit.crit)\n    return false;\n\n// Find the attack-flow target entry belonging specifically to the character\n// that was critically hit. This avoids assuming target array ordering.\nconst targetUuid = hit.target.document.uuid;\n\nconst targetEntry = triggerData.flowState?.data?.acc_diff?.targets?.find(\n    entry => entry.targetUuid === targetUuid\n);\n\nif (!targetEntry)\n    return false;\n\n// Striker-Type only triggers against a target with NO cover.\nreturn Number(targetEntry.cover ?? 0) === 0;",
+          "comments": "LA 4.1.8 review: current trigger/API usage remains valid. Updated for Lancer Automations 4.1.8. Optional Sequencer/Lancer Weapon FX presentation is guarded so missing FX never blocks mechanics. On a critical hit against a target with no cover, injects +2 Kinetic bonus damage and grants a genuine Free Boost activation followed by up to Speed movement.",
+          "triggerDescription": "",
+          "effectDescription": "<strong>On Critical Hit</strong>: If the target does not have cover, the Striker-Type deals <strong>+2 bonus damage</strong> and may immediately <strong>Boost</strong> as a free action.",
+          "isReaction": false,
+          "actionType": "Automation",
+          "frequency": "Unlimited",
+          "checkReaction": false,
+          "requireCanProvoke": false,
+          "checkUsage": false,
+          "autoActivate": true,
+          "awaitActivationCompletion": true,
+          "onlyOnSourceMatch": true,
+          "activationType": "code",
+          "activationMode": "instead",
+          "activationMacro": "",
+          "activationCode": "// Optional presentation layer, following the guarded Sequencer/Lancer Weapon FX pattern used by the Lancer Automations 4.1.8 defaults.\ntry {\n    const rtmFxApi = game.modules.get(\"lancer-weapon-fx\")?.api;\n    if (rtmFxApi && globalThis.Sequencer && typeof Sequence !== \"undefined\") {\n        const rtmFxFiles = [\n            \"modules/lancer-weapon-fx/soundfx/KineticImpact.ogg\",\n            \"jb2a.impact.earth.01\"\n        ];\n        await Sequencer.Preloader.preloadForClients(rtmFxFiles);\n        await new Sequence()\n            .sound()\n                .file(rtmFxFiles[0])\n                .volume(rtmFxApi.getEffectVolume(0.65))\n            .effect()\n                .file(rtmFxFiles[1])\n                .atLocation(triggerData.targets?.[0]?.target ?? reactorToken)\n                .scaleToObject(1.4)\n                .filter(\"Glow\", { color: 0xff8a00 })\n                .play();\n    }\n}\ncatch (error) {\n    console.warn(\"Road to Midnight automation FX skipped; mechanics continue normally.\", error);\n}\n\n// -----------------------------------------------------------------------------\n// +2 BONUS DAMAGE\n// -----------------------------------------------------------------------------\n// onHit occurs before the pending damage roll, so this ephemeral bonus is\n// carried directly into that attack's damage flow.\n\ntriggerData.flowState.injectBonus({\n    name: \"Striker-Type Critical Hit\",\n    type: \"damage\",\n    damage: [\n        {\n            val: \"2\",\n            type: \"kinetic\"\n        }\n    ]\n});\n\n// -----------------------------------------------------------------------------\n// FREE BOOST\n// -----------------------------------------------------------------------------\n// Fire a genuine Boost activation first. This costs no action because the\n// granted Boost is explicitly Free, but it means other automations that care\n// about Boost can still see the action occur.\n\nconst boost = await api.executeSimpleActivation(\n    reactorToken.actor,\n    {\n        title: \"Boost\",\n        action: {\n            name: \"Boost\",\n            activation: \"Free\"\n        },\n        detail: \"Granted by Striker-Type Critical Hit. Move up to your Speed.\"\n    }\n);\n\nif (!boost.completed)\n    return;\n\n// -----------------------------------------------------------------------------\n// BOOST MOVEMENT\n// -----------------------------------------------------------------------------\n// This is bonus movement granted by the trait, so it costs 0 movement from the\n// actor's ordinary movement allowance.\n\nconst speed = reactorToken.actor.system.speed;\n\nawait api.moveToken(reactorToken, {\n    range: speed,\n    cost: 0,\n    title: \"STRIKER-TYPE BOOST\",\n    description: `Move up to ${speed} spaces. Cancel to remain in place.`\n});",
+          "onInit": "",
+          "onMessage": "",
+          "triggerSelf": true,
+          "triggerOther": false,
+          "outOfCombat": true,
+          "dispositionFilter": null
+        }
+      ]
+    },
+    "npc-rebake_npcf_blinding_shells_archer": {
+      "itemType": "any",
+      "reactions": [
+        {
+          "reactionPath": "",
+          "triggers": [
+            "onHit"
+          ],
+          "evaluate": "return !!triggerData.targets?.[0]?.target;",
+          "comments": "LA 4.1.8 review: current trigger/API usage remains valid. Testing revision 1: Blinded is now removed by an explicit end-of-target-turn handler instead of automatic duration adjustment. Updated for Lancer Automations 4.1.8. Optional Sequencer/Lancer Weapon FX presentation is guarded so missing FX never blocks mechanics. LA 4.1 implementation. checkUsage uses the native 1/round tag, while accepted use is manually consumed because the automation replaces rather than runs the feature's native activation. executeSaveVsEffect handles the Engineering save and Blinded application.",
+          "triggerDescription": "",
+          "effectDescription": "1/round, after the Archer makes a successful attack, they may force their target to pass an Engineering save. On a failure, the target becomes Blinded until the end of their next turn.",
+          "isReaction": false,
+          "actionType": "Automation",
+          "frequency": "1/Round",
+          "checkReaction": false,
+          "requireCanProvoke": false,
+          "checkUsage": true,
+          "autoActivate": true,
+          "awaitActivationCompletion": true,
+          "onlyOnSourceMatch": false,
+          "activationType": "code",
+          "activationMode": "instead",
+          "activationMacro": "",
+          "activationCode": "// Optional presentation layer, following the guarded Sequencer/Lancer Weapon FX pattern used by the Lancer Automations 4.1.8 defaults.\ntry {\n    const rtmFxApi = game.modules.get(\"lancer-weapon-fx\")?.api;\n    if (rtmFxApi && globalThis.Sequencer && typeof Sequence !== \"undefined\") {\n        const rtmFxFiles = [\n            \"modules/lancer-weapon-fx/soundfx/AirBurst.ogg\",\n            \"jb2a.explosion.01.orange\"\n        ];\n        await Sequencer.Preloader.preloadForClients(rtmFxFiles);\n        await new Sequence()\n            .sound()\n                .file(rtmFxFiles[0])\n                .volume(rtmFxApi.getEffectVolume(0.65))\n            .effect()\n                .file(rtmFxFiles[1])\n                .atLocation(triggerData.targets?.[0]?.target ?? reactorToken)\n                .scaleToObject(1.5)\n                .filter(\"Glow\", { color: 0xfff2b0 })\n                .play();\n    }\n}\ncatch (error) {\n    console.warn(\"Road to Midnight automation FX skipped; mechanics continue normally.\", error);\n}\n\nconst target = triggerData.targets?.[0]?.target;\n\nif (!target)\n    return;\n\n// -----------------------------------------------------------------------------\n// CHOICE\n// -----------------------------------------------------------------------------\n// Blinding Shells is optional. Do not consume its 1/round use unless the Archer\n// actually chooses to force the save.\n\nconst choice = await api.startChoiceCard({\n    mode: \"or\",\n    title: \"BLINDING SHELLS\",\n    description: `<b>${reactorToken.name}</b> successfully attacked <b>${target.name}</b>. Use Blinding Shells?`,\n    icon: \"fas fa-sun\",\n    userIdControl: api.getActiveGMId(),\n    choices: [\n        {\n            text: \"Use Blinding Shells\",\n            icon: \"fas fa-burst\"\n        },\n        {\n            text: \"Ignore\",\n            icon: \"fas fa-times\"\n        }\n    ]\n});\n\n// Ignore, or the card was closed.\nif (!choice || choice.choiceIdx !== 0)\n    return;\n\n// -----------------------------------------------------------------------------\n// CONSUME 1/ROUND USE\n// -----------------------------------------------------------------------------\n// checkUsage:true reads the feature's native tg_round usage before offering\n// this automation. Because this is activationMode:'instead', we consume the\n// accepted use here rather than running the feature's native activation flow.\n\nconst currentUses = Number(\n    item.system.uses_per_round?.value ?? 0\n);\n\nawait item.update({\n    \"system.uses_per_round.value\": currentUses + 1\n});\n\n// -----------------------------------------------------------------------------\n// ENGINEERING SAVE + BLINDED\n// -----------------------------------------------------------------------------\n// executeSaveVsEffect handles the save and failed-save effect in one operation.\n//\n// The duration is tied to the affected character and therefore expires at the\n// END of their next turn. LA 4.1 handles the current-turn adjustment itself.\n\nawait api.executeSaveVsEffect(\n    target,\n    {\n        stat: \"ENG\",\n        title: \"Blinding Shells — Engineering Save\",\n        origin: reactorToken,\n\n        effects: \"Blinded\",\n\n        duration: { label: \"indefinite\" },\n\n        extraFlags: {\n            blindingShellsSourceItemId: item.id,\n            blindingShellsAppliedTurnKey: game.combat\n                ? game.combat.round + \":\" + game.combat.turn\n                : null\n        },\n\n        note: \"Blinding Shells\",\n        sendToOwner: true\n    }\n);",
+          "onInit": "",
+          "onMessage": "",
+          "triggerSelf": true,
+          "triggerOther": false,
+          "outOfCombat": false,
+          "dispositionFilter": null
+        },
+        {
+          "reactionPath": "",
+          "triggers": [
+            "onTurnEnd"
+          ],
+          "evaluate": "const target = triggerData.triggeringToken ?? triggerData.token;\nif (!target) return false;\nconst effects = api.findEffectsOnToken(target, \"Blinded\", { extraFlags: { blindingShellsSourceItemId: item.id } });\nif (!effects.length) return false;\nconst currentTurnKey = game.combat ? game.combat.round + \":\" + game.combat.turn : null;\nreturn effects.some(effect => effect.flags?.[\"lancer-automations\"]?.blindingShellsAppliedTurnKey !== currentTurnKey);",
+          "comments": "LA 4.1.8 review: current trigger/API usage remains valid. Testing revision 1: guarantees Blinding Shells lasts through the affected target's next turn and expires at that turn's end.",
+          "triggerDescription": "",
+          "effectDescription": "Remove this Archer's Blinding Shells effect at the end of the affected target's next turn.",
+          "isReaction": false,
+          "actionType": "Automation",
+          "frequency": "Unlimited",
+          "checkReaction": false,
+          "requireCanProvoke": false,
+          "checkUsage": false,
+          "autoActivate": true,
+          "awaitActivationCompletion": true,
+          "onlyOnSourceMatch": false,
+          "activationType": "code",
+          "activationMode": "instead",
+          "activationMacro": "",
+          "activationCode": "const target = triggerData.triggeringToken ?? triggerData.token;\nif (!target) return;\nawait api.removeEffectsByNameFromTokens({\n    tokens: [target],\n    effectNames: [\"Blinded\"],\n    extraFlags: { blindingShellsSourceItemId: item.id },\n    notify: false\n});",
+          "onInit": "",
+          "onMessage": "",
+          "triggerSelf": false,
+          "triggerOther": true,
+          "outOfCombat": false,
+          "dispositionFilter": null
+        }
+      ]
+    },
+    "npc-rebake_npcf_breach_ram_breacher": {
+      "itemType": "any",
+      "reactions": [
+        {
+          "reactionPath": "",
+          "triggers": [
+            "onActivation"
+          ],
+          "evaluate": "return true;",
+          "comments": "LA 4.1.8 public revision: the drag-ruler move commits with the forced movement action so Breach Ram can pass through walls and characters as written. Impact FX fires on the first actual token movement update. Superior Ram uses the corrected current-scene applyToTargetter scan for its save Difficulty.",
+          "triggerDescription": "",
+          "effectDescription": "The Breacher moves up to <strong>6 spaces</strong> in a straight line, ignoring engagement and passing through – but not stopping in – spaces occupied by other characters. Obstructions and objects in the Breacher’s path take <strong>30 AP kinetic damage</strong>. The Breacher passes through any obstructions destroyed this way and continues moving until they have moved <strong>6 spaces</strong> or fail to destroy an obstruction. Any characters in the Breacher’s path must succeed on an <strong>Agility</strong> save or be pushed out of the way as directly as possible and knocked <strong>Prone</strong>.",
+          "isReaction": false,
+          "actionType": "Automation",
+          "frequency": "Unlimited",
+          "checkReaction": false,
+          "requireCanProvoke": false,
+          "checkUsage": false,
+          "autoActivate": true,
+          "awaitActivationCompletion": true,
+          "onlyOnSourceMatch": true,
+          "activationType": "code",
+          "activationMode": "instead",
+          "activationMacro": "",
+          "activationCode": "const playBreachRamFx = async () => {\n    try {\n        const rtmFxApi = game.modules.get(\"lancer-weapon-fx\")?.api;\n        if (rtmFxApi && globalThis.Sequencer && typeof Sequence !== \"undefined\") {\n            const files = [\"modules/lancer-weapon-fx/soundfx/HeavyImpact.ogg\", \"jb2a.impact.earth.01\"];\n            await Sequencer.Preloader.preloadForClients(files);\n            await new Sequence().sound().file(files[0]).volume(rtmFxApi.getEffectVolume(0.65)).effect().file(files[1]).atLocation(reactorToken).scaleToObject(2.1).filter(\"Glow\", { color: 0xff6a00 }).play();\n        }\n    }\n    catch (error) {\n        console.warn(\"Breach Ram FX skipped; mechanics continue normally.\", error);\n    }\n};\n\nlet breachRamMoveHook = Hooks.on(\"preUpdateToken\", (document, change) => {\n    if (document.uuid !== reactorToken.document.uuid)\n        return;\n    const startsMoving = Object.prototype.hasOwnProperty.call(change, \"x\") || Object.prototype.hasOwnProperty.call(change, \"y\");\n    if (!startsMoving)\n        return;\n    Hooks.off(\"preUpdateToken\", breachRamMoveHook);\n    breachRamMoveHook = null;\n    void playBreachRamFx();\n});\n// -----------------------------------------------------------------------------\n// SUPERIOR RAM\n// -----------------------------------------------------------------------------\n// Superior Ram increases Breach Ram's movement to 10 spaces and gives characters\n// +1 Difficulty on the Agility save against it.\n\nconst hasSuperiorRam = !!api.findItemByLid(\n    reactorToken,\n    \"npcf_superior_ram_breacher\"\n);\n\nconst ramRange = hasSuperiorRam ? 10 : 6;\n\n// -----------------------------------------------------------------------------\n// BREACH RAM MOVEMENT\n// -----------------------------------------------------------------------------\n// Terrain/object destruction remains manual. moveToken gives us the special\n// movement itself. LA 4.1.8's explicit forced action commits the chosen path\n// through walls and characters as required by Breach Ram.\n\nconst moved = await api.moveToken(reactorToken, {\n    range: ramRange,\n    cost: 0,\n    action: \"forced\",\n    title: \"BREACH RAM\",\n    description: `Move up to ${ramRange} spaces in a straight line. Resolve any obstructions in the path manually. Do not end this movement overlapping another character.`\n});\n\nif (breachRamMoveHook !== null) {\n    Hooks.off(\"preUpdateToken\", breachRamMoveHook);\n    breachRamMoveHook = null;\n}\n\nif (!moved)\n    return;\n\n// -----------------------------------------------------------------------------\n// SELECT CHARACTERS IN THE RAM'S PATH\n// -----------------------------------------------------------------------------\n// We keep this manual because the movement tool cannot reliably distinguish\n// which occupied cells the Breacher actually passed through from arbitrary\n// terrain/object interactions on the map.\n\nconst victims = await api.chooseToken(reactorToken, {\n    count: -1,\n    includeSelf: false,\n    title: \"BREACH RAM — TARGETS\",\n    description: \"Select all characters that were in the Breacher's path.\"\n});\n\nif (!victims?.length)\n    return;\n\n// -----------------------------------------------------------------------------\n// SUPERIOR RAM SAVE DIFFICULTY\n// -----------------------------------------------------------------------------\n// Instead of temporarily adding +1 Difficulty to EVERY victim, LA 4.1 lets the\n// Superior Ram modifier live once on the Breacher and apply backwards to anyone\n// making the relevant Agility save against them.\n\nconst superiorRamBonusId =\n    `superior-ram-${reactorToken.id}-${foundry.utils.randomID()}`;\n\nif (hasSuperiorRam) {\n    await api.addGlobalBonus(\n        reactorToken.actor,\n        {\n            id: superiorRamBonusId,\n            name: \"Superior Ram\",\n            type: \"difficulty\",\n            val: 1,\n            rollTypes: [\"check\"],\n            applyToTargetter: true,\n\n            context: {\n                rammerTokenId: reactorToken.id\n            },\n\n            condition: (state, actor, data, context) => {\n                const path = String(\n                    data?.path ?? \"\"\n                ).toLowerCase();\n\n                return path.includes(\"agi\") &&\n                    state.la_extraData?.targetTokenId ===\n                        context.rammerTokenId;\n            }\n        },\n        {\n            origin: reactorToken\n        }\n    );\n}\n\n// -----------------------------------------------------------------------------\n// AGILITY SAVES\n// -----------------------------------------------------------------------------\n// executeForceCheck is deliberately retained here. Its saveVs option carries\n// the Breacher's token ID through owner-routed save flows, allowing Superior\n// Ram's applyToTargetter Difficulty to resolve correctly for player-owned tokens.\n\nlet saves;\n\ntry {\n    saves = await api.executeForceCheck(\n        \"AGI\",\n        victims,\n        {\n            saveVs: reactorToken,\n            sendToOwner: true,\n            title: hasSuperiorRam\n                ? \"Breach Ram — Agility Save (+1 Difficulty)\"\n                : \"Breach Ram — Agility Save\"\n        }\n    );\n}\nfinally {\n    // The Superior Ram bonus only exists for these Breach Ram saves.\n    if (hasSuperiorRam) {\n        await api.removeGlobalBonus(\n            reactorToken.actor,\n            bonus => bonus.id === superiorRamBonusId\n        );\n    }\n}\n\n// -----------------------------------------------------------------------------\n// FAILED SAVES\n// -----------------------------------------------------------------------------\n\nconst failed = saves.results\n    .filter(result =>\n        result.completed && !result.passed\n    )\n    .map(result => result.token);\n\nif (!failed.length)\n    return;\n\n// -----------------------------------------------------------------------------\n// PUSH FAILED CHARACTERS OUT OF THE PATH\n// -----------------------------------------------------------------------------\n// A negative distance leaves the displacement unrestricted so the GM/player can\n// place each character out of the Breacher's path as directly as possible.\n\nawait api.knockBackToken(failed, -1, {\n    triggeringToken: reactorToken,\n    actionName: \"Breach Ram\",\n    item,\n    title: \"BREACH RAM — PUSH\",\n    description: \"Move each failed character out of the Breacher's path as directly as possible.\"\n});\n\n// -----------------------------------------------------------------------------\n// KNOCK FAILED CHARACTERS PRONE\n// -----------------------------------------------------------------------------\n\nawait api.applyEffectsToTokens({\n    tokens: failed,\n    effectNames: [\"prone\"],\n    note: \"Breach Ram\"\n});",
+          "onInit": "",
+          "onMessage": "",
+          "triggerSelf": true,
+          "triggerOther": false,
+          "outOfCombat": true,
+          "dispositionFilter": null
+        }
+      ]
+    },
+    "npc-rebake_npcf_break_armor_breacher": {
+      "itemType": "any",
+      "reactions": [
+        {
+          "reactionPath": "",
+          "triggers": [
+            "onHit"
+          ],
+          "evaluate": "return triggerData.weapon?.system.lid === \"npc-rebake_npcf_dual_shotguns_breacher\";",
+          "comments": "LA 4.1.8 review: current trigger/API usage remains valid. Updated for Lancer Automations 4.1.8. Optional Sequencer/Lancer Weapon FX presentation is guarded so missing FX never blocks mechanics. Tracks whether each target has already been successfully attacked by this Breacher's Dual Shotguns during the current combat turn. A second successful attack applies Shredded for the rest of the scene.",
+          "triggerDescription": "",
+          "effectDescription": "Characters that are successfully attacked more than once in a turn by the Breacher’s <strong>Dual Shotguns</strong> become <strong>Shredded</strong> for the rest of the scene.",
+          "isReaction": false,
+          "actionType": "Automation",
+          "frequency": "Unlimited",
+          "checkReaction": false,
+          "requireCanProvoke": false,
+          "checkUsage": false,
+          "autoActivate": true,
+          "awaitActivationCompletion": true,
+          "onlyOnSourceMatch": false,
+          "activationType": "code",
+          "activationMode": "instead",
+          "activationMacro": "",
+          "activationCode": "// Optional presentation layer, following the guarded Sequencer/Lancer Weapon FX pattern used by the Lancer Automations 4.1.8 defaults.\ntry {\n    const rtmFxApi = game.modules.get(\"lancer-weapon-fx\")?.api;\n    if (rtmFxApi && globalThis.Sequencer && typeof Sequence !== \"undefined\") {\n        const rtmFxFiles = [\n            \"modules/lancer-weapon-fx/soundfx/MetallicThump.ogg\",\n            \"jb2a.impact.earth.01\"\n        ];\n        await Sequencer.Preloader.preloadForClients(rtmFxFiles);\n        await new Sequence()\n            .sound()\n                .file(rtmFxFiles[0])\n                .volume(rtmFxApi.getEffectVolume(0.65))\n            .effect()\n                .file(rtmFxFiles[1])\n                .atLocation(triggerData.targets?.[0]?.target ?? reactorToken)\n                .scaleToObject(1.5)\n                .filter(\"Glow\", { color: 0xffb000 })\n                .play();\n    }\n}\ncatch (error) {\n    console.warn(\"Road to Midnight automation FX skipped; mechanics continue normally.\", error);\n}\n\nconst combat = game.combat;\n\nif (!combat)\n    return;\n\n// -----------------------------------------------------------------------------\n// CURRENT TURN\n// -----------------------------------------------------------------------------\n// Break Armor cares about multiple successful attacks during the SAME turn.\n// Store the combat, round, turn index, and active token so the tracker resets\n// automatically whenever the combat advances to another turn.\n\nconst turnKey = [\n    combat.id,\n    combat.round,\n    combat.turn,\n    combat.current?.tokenId\n].join(\":\");\n\nlet state = api.getActorFlags(\n    reactorToken.actor,\n    \"breakArmorState\"\n) || {};\n\nif (state.turnKey !== turnKey) {\n    state = {\n        turnKey,\n        hitTargets: {}\n    };\n}\n\n// -----------------------------------------------------------------------------\n// PROCESS SUCCESSFUL DUAL SHOTGUN HITS\n// -----------------------------------------------------------------------------\n\nconst newlyShredded = [];\n\nfor (const result of triggerData.targets ?? []) {\n    const target = result.target;\n\n    if (!target)\n        continue;\n\n    // Once a character is already Shredded there is nothing more for Break\n    // Armor to track against them for the remainder of the scene.\n    if (api.hasStatus(target, \"shredded\"))\n        continue;\n\n    // If this Breacher has already successfully attacked this target with the\n    // Dual Shotguns during the current turn, this is the second hit and Break\n    // Armor triggers.\n    if (state.hitTargets[target.id]) {\n        newlyShredded.push(target);\n        continue;\n    }\n\n    // Otherwise remember this as the first successful attack this turn.\n    state.hitTargets[target.id] = true;\n}\n\n// -----------------------------------------------------------------------------\n// SAVE TURN STATE\n// -----------------------------------------------------------------------------\n\nawait api.addActorFlags(\n    reactorToken.actor,\n    {\n        breakArmorState: state\n    }\n);\n\nif (!newlyShredded.length)\n    return;\n\n// -----------------------------------------------------------------------------\n// APPLY SHREDDED\n// -----------------------------------------------------------------------------\n// No duration is supplied because Break Armor lasts for the rest of the scene.\n\nawait api.applyEffectsToTokens({\n    tokens: newlyShredded,\n    effectNames: [\"shredded\"],\n    note: \"Break Armor\"\n});",
+          "onInit": "",
+          "onMessage": "",
+          "triggerSelf": true,
+          "triggerOther": false,
+          "outOfCombat": false,
+          "dispositionFilter": null
+        }
+      ]
+    },
+    "npc-rebake_npcf_dispersal_shield_priest": {
+      "itemType": "any",
+      "reactions": [
+        {
+          "reactionPath": "",
+          "triggers": [
+            "onActivation"
+          ],
+          "evaluate": "return true;",
+          "comments": "LA 4.1.8 review: retained the defender-owned half-damage modifier and exact onDamage consumption pattern used by bundled Brace. LA 4.1.6 fixed applyToTargetter bonuses on viewed/non-active scenes, resolving the earlier failure. Overshield remains after the first successful attack consumes the resistance.",
+          "triggerDescription": "",
+          "effectDescription": "The Priest or an allied character within Sensors gains tier-scaled Overshield and Resistance to damage and heat from the next attack that hits.",
+          "isReaction": false,
+          "actionType": "Automation",
+          "frequency": "Unlimited",
+          "checkReaction": false,
+          "requireCanProvoke": false,
+          "checkUsage": false,
+          "autoActivate": true,
+          "awaitActivationCompletion": true,
+          "onlyOnSourceMatch": true,
+          "activationType": "code",
+          "activationMode": "instead",
+          "activationMacro": "",
+          "activationCode": "// Optional presentation layer, following the guarded Sequencer/Lancer Weapon FX pattern used by the Lancer Automations 4.1.8 defaults.\ntry {\n    const rtmFxApi = game.modules.get(\"lancer-weapon-fx\")?.api;\n    if (rtmFxApi && globalThis.Sequencer && typeof Sequence !== \"undefined\") {\n        const rtmFxFiles = [\n            \"modules/lancer-weapon-fx/soundfx/PPC_Charge.ogg\",\n            \"jb2a.shield.01.intro.blue\"\n        ];\n        await Sequencer.Preloader.preloadForClients(rtmFxFiles);\n        await new Sequence()\n            .sound()\n                .file(rtmFxFiles[0])\n                .volume(rtmFxApi.getEffectVolume(0.65))\n            .effect()\n                .file(rtmFxFiles[1])\n                .atLocation(reactorToken)\n                .scaleToObject(2)\n                .filter(\"Glow\", { color: 0x6bb7ff })\n                .play();\n    }\n}\ncatch (error) {\n    console.warn(\"Road to Midnight automation FX skipped; mechanics continue normally.\", error);\n}\n\nconst targets = await api.chooseToken(reactorToken, {\n    count: 1,\n    range: reactorToken.actor.system.sensor_range,\n    includeSelf: true,\n    filter: token =>\n        api.isFriendly(reactorToken, token) &&\n        !api.findEffectOnToken(token, \"Dispersal Shield\"),\n    filterWarning: \"Dispersal Shield must target the Priest or an allied character that is not already protected by Dispersal Shield.\",\n    soft: false,\n    title: \"DISPERSAL SHIELD\",\n    description: \"Choose the Priest or an allied character within Sensors.\"\n});\n\nif (!targets?.length)\n    return;\n\nconst target = targets[0];\n\n// -----------------------------------------------------------------------------\n// TIER-SCALED OVERSHIELD\n// -----------------------------------------------------------------------------\n\nconst shieldValue = api.tierValue(\n    reactorToken,\n    [5, 6, 7]\n);\n\n// -----------------------------------------------------------------------------\n// APPLY OVERSHIELD DIRECTLY\n// -----------------------------------------------------------------------------\n// Overshield is independent of the one-hit Resistance. Once granted, it remains\n// even after Dispersal Shield has protected against an attack and been consumed.\n//\n// Overshield does not stack, so retain whichever value is higher.\n\nconst currentOvershield = Number(\n    target.actor.system.overshield?.value ?? 0\n);\n\nconst newOvershield = Math.max(\n    currentOvershield,\n    shieldValue\n);\n\nif (newOvershield !== currentOvershield) {\n    await target.actor.update({\n        \"system.overshield.value\": newOvershield\n    });\n}\n\n// -----------------------------------------------------------------------------\n// APPLY ONE-HIT HALF-DAMAGE MODIFIER\n// -----------------------------------------------------------------------------\n// The bonus is stored on the protected character.\n//\n// applyToTargetter causes it to enter the damage flow of a character attacking\n// this protected character, where it applies Half Damage to the protected\n// target.\n//\n// We deliberately DO NOT use consumeOnUsage here. For applyToTargetter bonuses,\n// the damage flow belongs to the attacker, so generic bonus-use consumption\n// would look for the bonus on the wrong actor.\n//\n// Instead, the linked effect itself consumes one charge on onDamage after\n// confirming that this exact Half Damage modifier participated in a HIT.\n\nconst bonusId = \"dispersal-shield-half-\" + item.id + \"-\" + target.id;\n\nawait api.removeGlobalBonus(target.actor, bonus => bonus.context?.dispersalShield === true && bonus.context?.sourceItemId === item.id);\nawait api.removeConstantBonus(target.actor, bonus => bonus.context?.dispersalShield === true && bonus.context?.sourceItemId === item.id);\n\nawait api.addConstantBonus(target.actor, {\n    id: bonusId,\n    name: \"Dispersal Shield\",\n    type: \"target_modifier\",\n    subtype: \"half_damage\",\n    rollTypes: [\"damage\"],\n    applyToTargetter: true,\n    context: {\n        dispersalShield: true,\n        sourceItemId: item.id,\n        sourcePriestTokenId: reactorToken.id,\n        protectedTokenId: target.id\n    }\n});\n\nawait api.applyEffectsToTokens(\n    {\n        tokens: [target],\n        effectNames: [{ name: \"Dispersal Shield\", icon: item.img, isCustom: true }],\n        note: \"Dispersal Shield — next successful attack deals half damage\",\n        duration: { label: \"indefinite\" },\n        notify: false\n    },\n    {\n        dispersalShield: true,\n        dispersalShieldSourceItemId: item.id,\n        dispersalShieldBonusId: bonusId\n    }\n);",
+          "onInit": "",
+          "onMessage": "",
+          "triggerSelf": true,
+          "triggerOther": false,
+          "outOfCombat": true,
+          "dispositionFilter": null
+        },
+        {
+          "reactionPath": "",
+          "triggers": [
+            "onDamage"
+          ],
+          "evaluate": "const target = triggerData.target;\nif (!target?.actor) return false;\nconst effects = api.findEffectsOnToken(target, \"Dispersal Shield\", { extraFlags: { dispersalShieldSourceItemId: item.id } });\nreturn effects.some(effect => {\n    const bonusId = effect.flags?.[\"lancer-automations\"]?.dispersalShieldBonusId;\n    return !!bonusId\n        && !!triggerData.flowState?.la_extraData?.bonusUsage?.candidates?.[bonusId]\n        && api.getConstantBonuses(target.actor).some(bonus => bonus.id === bonusId);\n});",
+          "comments": "LA 4.1.8 review: consumes Dispersal Shield only after its exact half-damage bonus participates in a successful damage flow; this mirrors the current bundled Brace implementation.",
+          "triggerDescription": "",
+          "effectDescription": "Consume the one-hit resistance after it halves damage; overshield remains.",
+          "isReaction": false,
+          "actionType": "Automation",
+          "frequency": "Unlimited",
+          "checkReaction": false,
+          "requireCanProvoke": false,
+          "checkUsage": false,
+          "autoActivate": true,
+          "awaitActivationCompletion": true,
+          "onlyOnSourceMatch": false,
+          "activationType": "code",
+          "activationMode": "instead",
+          "activationMacro": "",
+          "activationCode": "const target = triggerData.target;\nif (!target?.actor) return;\nconst effects = api.findEffectsOnToken(target, \"Dispersal Shield\", { extraFlags: { dispersalShieldSourceItemId: item.id } });\nfor (const effect of effects) {\n    const bonusId = effect.flags?.[\"lancer-automations\"]?.dispersalShieldBonusId;\n    if (bonusId) await api.removeConstantBonus(target.actor, bonusId);\n}\nawait api.removeEffectsByNameFromTokens({\n    tokens: [target],\n    effectNames: [\"Dispersal Shield\"],\n    extraFlags: { dispersalShieldSourceItemId: item.id },\n    notify: false\n});",
+          "onInit": "",
+          "onMessage": "",
+          "triggerSelf": false,
+          "triggerOther": true,
+          "outOfCombat": true,
+          "dispositionFilter": null
+        }
+      ]
+    },
+    "npc-rebake_npcf_double_time_striker_grunt": {
+      "itemType": "any",
+      "reactions": [
+        {
+          "reactionPath": "",
+          "triggers": [
+            "onActivation"
+          ],
+          "evaluate": "return true;",
+          "comments": "LA 4.1.8 public revision: retains the restrained startup cue and cost-free Speed movement.",
+          "triggerDescription": "",
+          "effectDescription": "The Striker-Type moves up to their <strong>Speed</strong> in any direction.",
+          "isReaction": false,
+          "actionType": "Protocol",
+          "frequency": "Unlimited",
+          "checkReaction": false,
+          "requireCanProvoke": false,
+          "checkUsage": false,
+          "autoActivate": true,
+          "awaitActivationCompletion": true,
+          "onlyOnSourceMatch": true,
+          "activationType": "code",
+          "activationMode": "instead",
+          "activationMacro": "",
+          "activationCode": "// Optional presentation layer, following the guarded Sequencer/Lancer Weapon FX pattern used by the Lancer Automations 4.1.8 defaults.\ntry {\n    const rtmFxApi = game.modules.get(\"lancer-weapon-fx\")?.api;\n    if (rtmFxApi && globalThis.Sequencer && typeof Sequence !== \"undefined\") {\n        const rtmFxFiles = [\n            \"modules/lancer-weapon-fx/soundfx/WeaponBeep.ogg\",\n            \"jb2a.shield.01.intro.blue\"\n        ];\n        await Sequencer.Preloader.preloadForClients(rtmFxFiles);\n        await new Sequence()\n            .sound()\n                .file(rtmFxFiles[0])\n                .volume(rtmFxApi.getEffectVolume(0.35))\n            .effect()\n                .file(rtmFxFiles[1])\n                .atLocation(reactorToken)\n                .scaleToObject(1.5)\n                .filter(\"Glow\", { color: 0x4aa3ff })\n                .play();\n    }\n}\ncatch (error) {\n    console.warn(\"Road to Midnight automation FX skipped; mechanics continue normally.\", error);\n}\n\nconst speed = reactorToken.actor.system.speed;\n\nconst moved = await api.moveToken(reactorToken, {\n    range: speed,\n    cost: 0,\n    title: \"DOUBLE TIME\"\n});\n\nif (!moved)\n    return;",
+          "onInit": "",
+          "onMessage": "",
+          "triggerSelf": true,
+          "triggerOther": false,
+          "outOfCombat": true,
+          "dispositionFilter": null
+        }
+      ]
+    },
+    "npc-rebake_npcf_drone_barrage_hive": {
+      "itemType": "any",
+      "reactions": [
+        {
+          "reactionPath": "",
+          "triggers": [
+            "onTechHit"
+          ],
+          "evaluate": "return !!triggerData.targets?.[0]?.target;",
+          "comments": "LA 4.1.8 review: the forced-movement choice now uses the ruler's free/involuntary mode. This avoids spending movement, fires involuntary-movement handling, and retains ordinary obstruction/pathfinding rules.",
+          "triggerDescription": "",
+          "effectDescription": "On a successful tech attack, the target chooses one: become <strong>Immobilized</strong> and <strong>Impaired</strong> until the end of their next turn, or immediately move up to <strong>4 spaces</strong> in a direction chosen by the Hive. This movement ignores engagement and does not provoke reactions.",
+          "isReaction": false,
+          "actionType": "Automation",
+          "frequency": "Unlimited",
+          "checkReaction": false,
+          "requireCanProvoke": false,
+          "checkUsage": false,
+          "autoActivate": true,
+          "awaitActivationCompletion": true,
+          "onlyOnSourceMatch": true,
+          "activationType": "code",
+          "activationMode": "after",
+          "activationMacro": "",
+          "activationCode": "// Optional presentation layer, following the guarded Sequencer/Lancer Weapon FX pattern used by the Lancer Automations 4.1.8 defaults.\ntry {\n    const rtmFxApi = game.modules.get(\"lancer-weapon-fx\")?.api;\n    if (rtmFxApi && globalThis.Sequencer && typeof Sequence !== \"undefined\") {\n        const rtmFxFiles = [\n            \"modules/lancer-weapon-fx/soundfx/NexusFire.ogg\",\n            \"jb2a.zoning.inward.circle.once.bluegreen.01.01\"\n        ];\n        await Sequencer.Preloader.preloadForClients(rtmFxFiles);\n        await new Sequence()\n            .sound()\n                .file(rtmFxFiles[0])\n                .volume(rtmFxApi.getEffectVolume(0.65))\n            .effect()\n                .file(rtmFxFiles[1])\n                .atLocation(triggerData.targets?.[0]?.target ?? triggerData.triggeringToken ?? reactorToken)\n                .scaleToObject(1.6)\n                .filter(\"Glow\", { color: 0x35ffd2 })\n                .play();\n    }\n}\ncatch (error) {\n    console.warn(\"Road to Midnight automation FX skipped; mechanics continue normally.\", error);\n}\n\nconst target = triggerData.targets[0].target;\n\n// -----------------------------------------------------------------------------\n// TARGET CHOOSES DRONE BARRAGE EFFECT\n// -----------------------------------------------------------------------------\n\nconst choice = await api.startChoiceCard({\n    mode: \"or\",\n    title: \"DRONE BARRAGE\",\n    icon: \"fas fa-satellite-dish\",\n    description:\n        `<b>${target.name}</b> is caught in the Hive's drone barrage.<br><br>` +\n        `Choose one:<br>` +\n        `<b>• Immobilized + Impaired</b> until the end of your next turn.<br>` +\n        `<b>• Forced Movement</b> up to 4 spaces in a direction chosen by ${reactorToken.name}.`,\n    item,\n    originToken: reactorToken,\n    relatedToken: target,\n    userIdControl: api.getTokenOwnerUserId(target),\n    choices: [\n        {\n            text: \"Immobilized + Impaired\",\n            icon: \"fas fa-lock\"\n        },\n        {\n            text: \"Move Up To 4 Spaces\",\n            icon: \"fas fa-arrows-alt\"\n        }\n    ]\n});\n\nif (!choice)\n    return;\n\n// -----------------------------------------------------------------------------\n// OPTION 1 — IMMOBILIZED + IMPAIRED\n// -----------------------------------------------------------------------------\n\nif (choice.choiceIdx === 0) {\n    await api.applyEffectsToTokens({\n        tokens: [target],\n        effectNames: [\n            \"immobilized\",\n            \"impaired\"\n        ],\n        note: \"Drone Barrage\",\n        duration: {\n            label: \"end\",\n            turns: 1,\n            rounds: 0,\n            overrideTurnOriginId: target.id\n        }\n    });\n\n    return;\n}\n\n// -----------------------------------------------------------------------------\n// OPTION 2 — FORCED MOVEMENT\n// -----------------------------------------------------------------------------\n\nif (choice.choiceIdx === 1) {\n    await api.moveToken(target, {\n        range: 4,\n        free: true,\n            title: \"DRONE BARRAGE\",\n        description:\n            `${reactorToken.name} moves ${target.name} up to 4 spaces. ` +\n            `This is forced movement and does not provoke reactions.`\n    });\n}",
+          "onInit": "",
+          "onMessage": "",
+          "triggerSelf": true,
+          "triggerOther": false,
+          "outOfCombat": true,
+          "dispositionFilter": null
+        }
+      ]
+    },
+    "npc-rebake_npcf_dual_shotguns_breacher": {
+      "itemType": "any",
+      "reactions": [
+        {
+          "reactionPath": "",
+          "triggers": [
+            "onAttack"
+          ],
+          "evaluate": "return triggerData.weapon?.system.lid === \"npc-rebake_npcf_dual_shotguns_breacher\";",
+          "comments": "LA 4.1.8 review: current trigger/API usage remains valid. Reviewed against Lancer Automations 4.1.8 defaults and APIs. Runs after the Accuracy/Difficulty HUD and before attack rolls are generated. Any positive final Accuracy/Difficulty total is reduced to 0 by adding equivalent Difficulty, preserving all negative totals.",
+          "triggerDescription": "",
+          "effectDescription": "The final attack rolls for Dual Shotguns can never have net Accuracy. Accuracy may cancel Difficulty, but any remaining positive Accuracy is ignored.",
+          "isReaction": false,
+          "actionType": "Automation",
+          "frequency": "Unlimited",
+          "checkReaction": false,
+          "requireCanProvoke": false,
+          "checkUsage": false,
+          "autoActivate": true,
+          "awaitActivationCompletion": true,
+          "onlyOnSourceMatch": true,
+          "activationType": "code",
+          "activationMode": "instead",
+          "activationMacro": "",
+          "activationCode": "const accDiff = triggerData.flowState?.data?.acc_diff;\n\nif (!accDiff)\n    return;\n\n// -----------------------------------------------------------------------------\n// CAP FINAL ACCURACY AT 0\n// -----------------------------------------------------------------------------\n// Dual Shotguns can benefit from Accuracy insofar as it cancels Difficulty,\n// but the FINAL attack roll can never have positive Accuracy.\n//\n// At onAttack, the Accuracy/Difficulty HUD has already been confirmed, so each\n// target's .total represents the final net Accuracy/Difficulty for that roll,\n// including weapon modifiers, cover, Lock On, Prone, global bonuses, targeted\n// bonuses, and any other modifiers already applied to the attack.\n//\n// If that final total is positive, add exactly enough Difficulty to reduce it\n// to 0. Negative totals are left completely untouched.\n\nfor (const targetData of accDiff.targets ?? []) {\n    const finalTotal = Number(targetData.total ?? 0);\n\n    if (finalTotal <= 0)\n        continue;\n\n    targetData.difficulty =\n        Number(targetData.difficulty ?? 0) + finalTotal;\n}\n\n// -----------------------------------------------------------------------------\n// UNTARGED / BASE ROLL FALLBACK\n// -----------------------------------------------------------------------------\n// Normally Dual Shotguns will be rolled against targets, but preserve the same\n// rule if Foundry ever resolves an untargeted/base attack roll.\n\nif (!(accDiff.targets?.length)) {\n    const baseTotal = Number(accDiff.base?.total ?? 0);\n\n    if (baseTotal > 0) {\n        accDiff.base.difficulty =\n            Number(accDiff.base.difficulty ?? 0) + baseTotal;\n    }\n}",
+          "onInit": "",
+          "onMessage": "",
+          "triggerSelf": true,
+          "triggerOther": false,
+          "outOfCombat": true,
+          "dispositionFilter": null
+        }
+      ]
+    },
+    "npc-rebake_npcf_eye_of_midnight_sentinel": {
+      "itemType": "any",
+      "reactions": [
+        {
+          "reactionPath": "",
+          "triggers": [
+            "onActivation"
+          ],
+          "evaluate": "if (triggerData.triggeringToken?.id !== reactorToken.id)\n    return false;\n\nif (triggerData.endActivation)\n    return true;\n\nreturn triggerData.item?.system?.lid === item?.system?.lid;",
+          "comments": "LA 4.1.8 review: current trigger/API usage remains valid. Updated for Lancer Automations 4.1.8. Optional Sequencer/Lancer Weapon FX presentation is guarded so missing FX never blocks mechanics. Eye of Midnight — applies native Slowed plus a custom Eye of Midnight status, registers the feature as a persistent activated item with a Quick Action to deactivate it, and provides activation dialogue.",
+          "triggerDescription": "",
+          "effectDescription": "The Sentinel becomes <strong>Slowed</strong>, but can take the <strong>Overwatch</strong> Reaction <strong>1/turn</strong> instead of <strong>1/round</strong>. Additionally, they may attack with <strong>Overwatch</strong> using the <strong>Combat Shotgun</strong> when hostile characters enter, leave, or exit spaces within their <strong>Threat</strong> no matter whether they started their movement there. Once activated, this effect lasts until it is deactivated as a <strong>Quick Action</strong>.",
+          "isReaction": false,
+          "actionType": "Quick Action",
+          "frequency": "Unlimited",
+          "checkReaction": false,
+          "requireCanProvoke": false,
+          "checkUsage": false,
+          "autoActivate": true,
+          "awaitActivationCompletion": true,
+          "onlyOnSourceMatch": false,
+          "activationType": "code",
+          "activationMode": "instead",
+          "activationMacro": "",
+          "activationCode": "if (triggerType === \"onActivation\") {\n    // Optional presentation layer, following the guarded Sequencer/Lancer Weapon FX pattern used by the Lancer Automations 4.1.8 defaults.\n    try {\n        const rtmFxApi = game.modules.get(\"lancer-weapon-fx\")?.api;\n        if (rtmFxApi && globalThis.Sequencer && typeof Sequence !== \"undefined\") {\n            const rtmFxFiles = [\n                \"modules/lancer-weapon-fx/soundfx/TechPrepare.ogg\",\n                \"jb2a.zoning.inward.square.once.redyellow.01.01\"\n            ];\n            await Sequencer.Preloader.preloadForClients(rtmFxFiles);\n            await new Sequence()\n                .sound()\n                    .file(rtmFxFiles[0])\n                    .volume(rtmFxApi.getEffectVolume(0.65))\n                .effect()\n                    .file(rtmFxFiles[1])\n                    .atLocation(reactorToken)\n                    .scaleToObject(1.8)\n                    .filter(\"Glow\", { color: 0xff3344 })\n                    .play();\n        }\n    }\n    catch (error) {\n        console.warn(\"Road to Midnight automation FX skipped; mechanics continue normally.\", error);\n    }\n    \n    \n}\n\nconst eyeOfMidnightSource = item.id;\n\nconst cleanupEyeOfMidnight = async () => {\n    // Remove only the Slowed condition and visual marker applied by\n    // this specific Eye of Midnight activation.\n    await api.removeEffectsByNameFromTokens({\n        tokens: [reactorToken],\n        effectNames: [\"slow\", \"Eye of Midnight\"],\n        extraFlags: {\n            eyeOfMidnightSource\n        }\n    });\n};\n\n// -----------------------------------------------------------------------------\n// DEACTIVATE EYE OF MIDNIGHT\n// -----------------------------------------------------------------------------\n\n// setItemAsActivated() exposes Eye of Midnight as a persistent activated\n// item. Ending it through the TAH fires onActivation again with\n// triggerData.endActivation === true.\nif (triggerData.endActivation) {\n    await cleanupEyeOfMidnight();\n    return;\n}\n\n// -----------------------------------------------------------------------------\n// ACTIVATE EYE OF MIDNIGHT\n// -----------------------------------------------------------------------------\n\nconst alreadyActive = api.getActivatedItems(reactorToken)\n    ?.some(activeItem => activeItem.id === item.id);\n\nif (alreadyActive)\n    return;\n\n// Apply native Slowed plus a custom visual marker showing that\n// Eye of Midnight is active. Both effects are stamped with the source\n// item so teardown only removes effects belonging to this activation.\nawait api.applyEffectsToTokens(\n    {\n        tokens: [reactorToken],\n        effectNames: [\n            \"slow\",\n            {\n                name: \"Eye of Midnight\",\n                icon: \"worlds/Lancer/VTT stuff/virtual-marker.svg\",\n                isCustom: true\n            }\n        ],\n        note: \"Eye of Midnight\"\n    },\n    {\n        eyeOfMidnightSource\n    }\n);\n\n// Register Eye of Midnight as a persistent activated item. The TAH will\n// provide the Quick Action below for ending the stance, which returns to\n// this automation with triggerData.endActivation === true.\nawait api.setItemAsActivated(\n    item,\n    reactorToken,\n    \"Quick\",\n    \"Deactivate Eye of Midnight\"\n);\n\n// -----------------------------------------------------------------------------",
+          "onInit": "",
+          "onMessage": "",
+          "triggerSelf": true,
+          "triggerOther": false,
+          "outOfCombat": true,
+          "dispositionFilter": null
+        },
+        {
+          "reactionPath": "",
+          "triggers": [
+            "onPreMove",
+            "onMove"
+          ],
+          "evaluate": "const mover = triggerData.triggeringToken ?? triggerData.token;\n\nif (!mover)\n    return false;\n\n// Eye of Midnight must currently be active.\nif (!api.getActivatedItems(reactorToken)?.some(i => i.id === item.id))\n    return false;\n\n// Only hostile movement can trigger Eye of Midnight.\nif (!api.isHostile(reactorToken, mover))\n    return false;\n\n// Teleportation does not provoke this movement reaction.\nif (triggerData.moveInfo?.isTeleport)\n    return false;\n\nconst threat = 3;\n\n// The tagged reroute has now completed at the first threatened space.\n// This is where the \"enter Threat\" Overwatch actually resolves.\nif (triggerType === \"onMove\") {\n    const extra = triggerData.moveInfo?.extraData ?? {};\n\n    return extra.eyeOfMidnightInterceptItemId === item.id\n        && extra.eyeOfMidnightInterceptReactorId === reactorToken.id\n        && extra.eyeOfMidnightInterceptMoverId === mover.id;\n}\n\nif (triggerType !== \"onPreMove\")\n    return false;\n\n// When Eye of Midnight reroutes an entering character to the first threatened\n// space, that rerouted move is itself a new onPreMove. Let that move finish\n// rather than intercepting it a second time.\nconst pendingIntercept = api.getActorFlags(\n    reactorToken.actor,\n    \"eyeOfMidnightPendingIntercept\"\n);\n\nif (\n    triggerData.moveInfo?.isModified\n    && pendingIntercept?.itemId === item.id\n    && pendingIntercept?.moverId === mover.id\n)\n    return false;\n\n// Ordinary Overwatch case: the mover already begins within Threat.\nconst startDistance = api.getMinGridDistance(\n    mover,\n    reactorToken,\n    triggerData.startPos\n);\n\nif (startDistance <= threat)\n    return true;\n\n// Eye of Midnight also catches a hostile that enters Threat during its path,\n// even if it began outside.\nconst path = triggerData.moveInfo?.pathHexes ?? [];\nconst startIndex = Math.max(0, path.historyStartIndex ?? 0);\n\nfor (let i = startIndex; i < path.length; i++) {\n    const step = path[i];\n\n    const distance = api.getMinGridDistance(\n        mover,\n        reactorToken,\n        { x: step.x, y: step.y }\n    );\n\n    if (distance <= threat)\n        return true;\n}\n\nreturn false;",
+          "comments": "LA 4.1.8 review: current trigger/API usage remains valid. Reviewed against Lancer Automations 4.1.8 defaults and APIs. Eye of Midnight Overwatch — while active, handles ordinary Overwatch timing for movement that starts within Threat 3 and interrupts hostile movement entering Threat 3 at the first threatened space before resolving the Combat Shotgun attack.",
+          "triggerDescription": "While Eye of Midnight is active, a hostile character leaves or moves from within the Sentinel's Threat, or enters the Sentinel's Threat during movement.",
+          "effectDescription": "The Sentinel may use <strong>Overwatch</strong> with the <strong>Combat Shotgun</strong>. Eye of Midnight allows this Overwatch <strong>1/turn</strong>.",
+          "isReaction": true,
+          "actionType": "Reaction",
+          "frequency": "1/Round",
+          "checkReaction": true,
+          "requireCanProvoke": true,
+          "checkUsage": false,
+          "autoActivate": true,
+          "awaitActivationCompletion": true,
+          "onlyOnSourceMatch": false,
+          "activationType": "code",
+          "activationMode": "instead",
+          "activationMacro": "",
+          "activationCode": "const mover = triggerData.triggeringToken ?? triggerData.token;\n\nif (!mover)\n    return;\n\nconst threat = 3;\n\n// If this is the tagged movement that brought the mover to the first\n// threatened space, clear the temporary recursion guard immediately.\nif (triggerType === \"onMove\") {\n    await api.removeActorFlags(reactorToken.actor, {\n        eyeOfMidnightPendingIntercept: true\n    });\n}\n\nconst shotgun = api.findItemByLid(\n    reactorToken.actor,\n    \"npc-rebake_npcf_combat_shotgun_sentinel\"\n);\n\nif (!shotgun) {\n    ui.notifications.warn(\n        `Eye of Midnight: Combat Shotgun not found on ${reactorToken.name}.`\n    );\n    return;\n}\n\nconst fireShotgun = async () => {\n    // Eye of Midnight has now actually been used as a Reaction.\n    await api.setReaction(reactorToken, false);\n\n    // Force the moving character to be the Combat Shotgun target.\n    canvas.tokens.setTargets([mover.id]);\n\n    await api.beginWeaponAttackFlow(\n        shotgun,\n        {},\n        {\n            overwatchAttack: true,\n            eyeOfMidnight: true\n        }\n    );\n};\n\nconst askToFire = async (description) => {\n    const result = await api.startChoiceCard({\n        mode: \"or\",\n        title: \"EYE OF MIDNIGHT — OVERWATCH\",\n        icon: api.getActivationIcon(\"reaction\"),\n        description,\n        item,\n        originToken: reactorToken,\n        relatedToken: mover,\n        userIdControl: api.getTokenOwnerUserId(reactorToken),\n        choices: [\n            {\n                text: \"Fire\",\n                icon: \"fas fa-crosshairs\"\n            },\n            {\n                text: \"Let Them Move\",\n                icon: \"fas fa-person-running\"\n            }\n        ]\n    });\n\n    return !!result && result.choiceIdx === 0;\n};\n\n// -----------------------------------------------------------------------------\n// ENTERING THREAT — RESOLVE AFTER THE INTERCEPT MOVE\n// -----------------------------------------------------------------------------\n\nif (triggerType === \"onMove\") {\n    await fireShotgun();\n    return;\n}\n\n// -----------------------------------------------------------------------------\n// MOVEMENT STARTS INSIDE THREAT — ORDINARY OVERWATCH TIMING\n// -----------------------------------------------------------------------------\n\nconst startDistance = api.getMinGridDistance(\n    mover,\n    reactorToken,\n    triggerData.startPos\n);\n\nif (startDistance <= threat) {\n    const preConfirm = async () => {\n        const fire = await askToFire(\n            `<b>${mover.name}</b> is moving from within <b>${reactorToken.name}</b>'s Threat. Fire the Combat Shotgun?`\n        );\n\n        // Declined or card closed: allow the original movement normally.\n        if (!fire)\n            return false;\n\n        // Ordinary Overwatch resolves before the triggering movement.\n        await fireShotgun();\n\n        // The attack has resolved; replay the triggering movement.\n        return false;\n    };\n\n    triggerData.cancelTriggeredMove(\n        `<b>${reactorToken.name}</b> may use Eye of Midnight against <b>${mover.name}</b>.`,\n        false,\n        api.getTokenOwnerUserId(mover),\n        preConfirm,\n        null,\n        {\n            item,\n            originToken: reactorToken,\n            relatedToken: mover\n        }\n    );\n\n    return;\n}\n\n// -----------------------------------------------------------------------------\n// MOVEMENT ENTERS THREAT — STOP AT THE FIRST THREATENED SPACE\n// -----------------------------------------------------------------------------\n\nconst path = triggerData.moveInfo?.pathHexes ?? [];\nconst startIndex = Math.max(0, path.historyStartIndex ?? 0);\n\nlet interceptIndex = -1;\n\nfor (let i = startIndex; i < path.length; i++) {\n    const step = path[i];\n\n    const distance = api.getMinGridDistance(\n        mover,\n        reactorToken,\n        { x: step.x, y: step.y }\n    );\n\n    if (distance <= threat) {\n        interceptIndex = i;\n        break;\n    }\n}\n\nif (interceptIndex < 0)\n    return;\n\nconst interceptPoint =\n    path.getPathPositionAt?.(interceptIndex)\n    ?? { x: path[interceptIndex].x, y: path[interceptIndex].y };\n\nconst preConfirm = async () => {\n    const fire = await askToFire(\n        `<b>${mover.name}</b> is about to enter <b>${reactorToken.name}</b>'s Threat. Fire the Combat Shotgun as they cross the line?`\n    );\n\n    // Declined or card closed: replay the original movement normally.\n    if (!fire)\n        return false;\n\n    // Mark this specific reroute so its own onPreMove is allowed to finish.\n    await api.addActorFlags(reactorToken.actor, {\n        eyeOfMidnightPendingIntercept: {\n            itemId: item.id,\n            moverId: mover.id\n        }\n    });\n\n    return true;\n};\n\nawait triggerData.changeTriggeredMove(\n    interceptPoint,\n    {\n        eyeOfMidnightInterceptItemId: item.id,\n        eyeOfMidnightInterceptReactorId: reactorToken.id,\n        eyeOfMidnightInterceptMoverId: mover.id\n    },\n    `<b>${mover.name}</b> stops as they enter <b>${reactorToken.name}</b>'s Threat.`,\n    false,\n    api.getTokenOwnerUserId(mover),\n    preConfirm,\n    null,\n    {\n        item,\n        originToken: reactorToken,\n        relatedToken: mover\n    }\n);",
+          "onInit": "",
+          "onMessage": "",
+          "triggerSelf": false,
+          "triggerOther": true,
+          "outOfCombat": false,
+          "dispositionFilter": null
+        }
+      ]
+    },
+    "npc-rebake_npcf_follower_count_breacher": {
+      "itemType": "any",
+      "reactions": [
+        {
+          "reactionPath": "",
+          "triggers": [
+            "onInitTechAttack",
+            "onTechHit",
+            "onDestroyed",
+            "onExitCombat"
+          ],
+          "evaluate": "const triggeringToken = triggerData.triggeringToken ?? triggerData.token;\nconst currentTargetId = api.getActorFlags(\n    reactorToken.actor,\n    \"followerCountTargetId\"\n);\n\n// -----------------------------------------------------------------------------\n// FOLLOWER COUNT TECH ATTACK\n// -----------------------------------------------------------------------------\n\nif (triggerType === \"onInitTechAttack\") {\n    if (triggeringToken?.id !== reactorToken.id)\n        return false;\n\n    if (triggerData.techItem?.system?.lid !== item?.system?.lid)\n        return false;\n\n    const target = triggerData.targets?.[0];\n\n    // The 4 Heat retarget cost only applies if Follower Count already has a\n    // different target.\n    return !!target\n        && !!currentTargetId\n        && currentTargetId !== target.id;\n}\n\nif (triggerType === \"onTechHit\") {\n    return triggeringToken?.id === reactorToken.id\n        && triggerData.techItem?.system?.lid === item?.system?.lid\n        && !!triggerData.targets?.[0]?.target;\n}\n\n// -----------------------------------------------------------------------------\n// FOLLOWER COUNT ENDS WHEN EITHER CHARACTER IS DESTROYED\n// -----------------------------------------------------------------------------\n\nif (triggerType === \"onExitCombat\") {\n    return triggeringToken?.id === reactorToken.id;\n}\n\nif (triggerType === \"onDestroyed\") {\n    if (!triggeringToken)\n        return false;\n\n    return triggeringToken.id === reactorToken.id\n        || (!!currentTargetId && triggeringToken.id === currentTargetId);\n}\n\nreturn false;",
+          "comments": "LA 4.1.8 revision: Follower Count adds Follower Count Boost directly to the Breacher as an actor-level Free action. Movement direction is advisory rather than enforced; the move card reminds the user to finish as close to the followed target as possible. Cleanup removes the action when either participant is destroyed or when the Breacher exits combat.",
+          "triggerDescription": "",
+          "effectDescription": "The Breacher makes a tech attack against a character within <strong>Sensors</strong>. On a success, the Breacher gains <strong>+1 Accuracy</strong> on all attacks against their target, and may <strong>Boost</strong> once per turn as a <strong>free action</strong> so long as it moves them directly towards their target. This lasts until either character is destroyed and cannot be changed to a new target unless the Breacher takes <strong>4 Heat</strong> to attempt this tech attack against a different target.",
+          "isReaction": false,
+          "actionType": "Automation",
+          "frequency": "Unlimited",
+          "checkReaction": false,
+          "requireCanProvoke": false,
+          "checkUsage": false,
+          "autoActivate": true,
+          "awaitActivationCompletion": true,
+          "onlyOnSourceMatch": false,
+          "activationType": "code",
+          "activationMode": "instead",
+          "activationMacro": "",
+          "activationCode": "const BOOST_ACTION = \"Follower Count Boost\";\n\nconst getCurrentTarget = () => {\n    const targetId = api.getActorFlags(\n        reactorToken.actor,\n        \"followerCountTargetId\"\n    );\n\n    return targetId ? canvas.tokens.get(targetId) : null;\n};\n\nconst tokenIsDestroyed = (token) => {\n    if (!token?.actor)\n        return true;\n\n    return (token.actor.system.structure?.value ?? 1) <= 0\n        || (token.actor.system.stress?.value ?? 1) <= 0;\n};\n\n// End the temporary Boost movement state while preserving the Breacher's\n// ordinary movement allowance. The temporary cap is reduced to the amount\n// actually spent by this Boost, so unused Boost movement cannot be spent later.\nconst endFollowerCountBoost = async () => {\n    const boostActive = api.getActorFlags(\n        reactorToken.actor,\n        \"followerCountBoostActive\"\n    ) === true;\n\n    if (!boostActive)\n        return;\n\n    const baseCap = Number(api.getActorFlags(\n        reactorToken.actor,\n        \"followerCountBoostBaseCap\"\n    ));\n\n    const startCost = Number(api.getActorFlags(\n        reactorToken.actor,\n        \"followerCountBoostStartCost\"\n    ));\n\n    if (Number.isFinite(baseCap) && Number.isFinite(startCost)) {\n        const currentCost = Number(\n            api.getIntentionalMoveData(reactorToken)?.cost ?? startCost\n        );\n\n        const boostCost = Math.max(0, currentCost - startCost);\n        const desiredCap = baseCap + boostCost;\n        const currentCap = Number(api.getMovementCap(reactorToken));\n\n        if (Number.isFinite(currentCap) && currentCap !== desiredCap) {\n            api.increaseMovementCap(\n                reactorToken,\n                desiredCap - currentCap\n            );\n        }\n    }\n\n    await api.removeActorFlags(reactorToken.actor, {\n        followerCountBoostActive: true,\n        followerCountBoostBaseCap: true,\n        followerCountBoostStartCost: true\n    });\n};\n\nconst cleanupFollowerCount = async () => {\n    await endFollowerCountBoost();\n\n    const bonusId = api.getActorFlags(\n        reactorToken.actor,\n        \"followerCountBonusId\"\n    );\n\n    if (bonusId) {\n        await api.removeGlobalBonus(\n            reactorToken.actor,\n            bonusId\n        );\n    }\n\n    // Also clear any legacy/duplicate Follower Count bonuses left by the old\n    // automation, which could stack Accuracy on repeated successful attacks.\n    await api.removeGlobalBonus(\n        reactorToken.actor,\n        bonus => bonus.context?.followerCount === true\n            && (\n                !bonus.context?.sourceItemId\n                || bonus.context.sourceItemId === item.id\n            )\n    );\n\n    await api.removeExtraActions(item, BOOST_ACTION);\n    await api.removeExtraActions(reactorToken.actor, BOOST_ACTION);\n\n    const boostFeature = api.findItemByLid(\n        reactorToken,\n        \"rtm_npcf_follower_count_boost\"\n    );\n    if (boostFeature)\n        await boostFeature.delete();\n\n    await api.removeActorFlags(reactorToken.actor, {\n        followerCountTargetId: true,\n        followerCountBonusId: true,\n        followerCountBoostUsedTurnKey: true,\n        followerCountBoostRejected: true\n    });\n\n    await reactorToken.document.unsetFlag(\n        \"lancer-automations\",\n        \"ownerActorUuid\"\n    );\n\n    await reactorToken.document.unsetFlag(\n        \"lancer-automations\",\n        \"ownerName\"\n    );\n};\n\n// -----------------------------------------------------------------------------\n// RETARGET COST — PAY 4 HEAT BEFORE THE TECH ATTACK IS ATTEMPTED\n// -----------------------------------------------------------------------------\n\nif (triggerType === \"onInitTechAttack\") {\n    const oldTarget = getCurrentTarget();\n\n    // Defensive cleanup for stale state. If the old target no longer exists or\n    // is already destroyed, Follower Count has ended and no Heat is owed.\n    if (!oldTarget || tokenIsDestroyed(oldTarget)) {\n        await cleanupFollowerCount();\n        return;\n    }\n\n    // cancelTechAttack must be called before the first await. The preConfirm\n    // resolves the Heat cost; returning false replays the original tech attack.\n    const preConfirm = async () => {\n        const result = await api.executeDamageRoll(\n            reactorToken,\n            [reactorToken],\n            4,\n            \"Heat\",\n            \"Follower Count — Retarget Cost\"\n        );\n\n        // If the Heat flow itself did not complete, the cost was not paid and\n        // the retarget attempt stays cancelled.\n        if (!result?.completed)\n            return true;\n\n        // If paying the Heat destroyed the Breacher, it cannot continue with\n        // the tech attack. Otherwise, replay it normally.\n        return tokenIsDestroyed(reactorToken);\n    };\n\n    triggerData.cancelTechAttack(\n        `<b>${reactorToken.name}</b> takes <b>4 Heat</b> to attempt to change Follower Count targets.`,\n        \"FOLLOWER COUNT — RETARGET\",\n        false,\n        api.getTokenOwnerUserId(reactorToken),\n        preConfirm,\n        null,\n        {\n            item,\n            originToken: reactorToken,\n            relatedToken: triggerData.targets?.[0] ?? null\n        }\n    );\n\n    await triggerData.cancelTechAttack.wait();\n    return;\n}\n\n// -----------------------------------------------------------------------------\n// SUCCESSFUL FOLLOWER COUNT — ESTABLISH/CHANGE THE TARGET\n// -----------------------------------------------------------------------------\n\nif (triggerType === \"onTechHit\") {\n    const target = triggerData.targets?.[0]?.target;\n\n    if (!target)\n        return;\n\n    // Follower Count grants exactly +1 Accuracy. Remove both the current bonus\n    // and any legacy duplicate stacks before installing the new target bonus.\n    await api.removeGlobalBonus(\n        reactorToken.actor,\n        bonus => bonus.context?.followerCount === true\n            && (\n                !bonus.context?.sourceItemId\n                || bonus.context.sourceItemId === item.id\n            )\n    );\n\n    const bonusId = await api.addGlobalBonus(\n        reactorToken.actor,\n        {\n            name: \"Follower Count\",\n            type: \"accuracy\",\n            val: 1,\n            rollTypes: [\"attack\"],\n            applyTo: [target.id],\n            context: {\n                followerCount: true,\n                sourceItemId: item.id,\n                targetTokenId: target.id\n            }\n        },\n        {\n            duration: \"indefinite\",\n            origin: reactorToken\n        }\n    );\n\n    await api.addActorFlags(reactorToken.actor, {\n        followerCountTargetId: target.id,\n        followerCountBonusId: bonusId\n    });\n\n    // Keep the existing visual link behaviour.\n    await reactorToken.document.setFlag(\n        \"lancer-automations\",\n        \"ownerActorUuid\",\n        target.actor.uuid\n    );\n\n    await reactorToken.document.setFlag(\n        \"lancer-automations\",\n        \"ownerName\",\n        target.actor.name\n    );\n\n    // Remove any revision 1/2 item- or actor-attached Boost before creating the separate feature.\n    await api.removeExtraActions(item, BOOST_ACTION);\n    await api.removeExtraActions(reactorToken.actor, BOOST_ACTION);\n\n    // Remove any embedded Boost left by the earlier implementation.\n    const legacyBoostFeature = api.findItemByLid(\n        reactorToken,\n        \"rtm_npcf_follower_count_boost\"\n    );\n    if (legacyBoostFeature)\n        await legacyBoostFeature.delete();\n\n    // Add the Boost directly to this Breacher's actor-level action list.\n    // Actor extras bind to a general activation with the same exact name.\n    await api.removeExtraActions(reactorToken.actor, BOOST_ACTION);\n    await api.addExtraActions(reactorToken.actor, {\n        name: BOOST_ACTION,\n        activation: \"Free\",\n        detail: \"Once per turn, Boost up to Speed. Move as close to the followed target as possible.\",\n        icon: \"fas fa-forward\"\n    });\n    return;\n}\n\n// -----------------------------------------------------------------------------\n// DESTRUCTION CLEANUP\n// -----------------------------------------------------------------------------\n\nif (triggerType === \"onDestroyed\" || triggerType === \"onExitCombat\") {\n    await cleanupFollowerCount();\n}",
+          "onInit": "const BOOST_ACTION = \"Follower Count Boost\";\nconst legacyBoostFeature = api.findItemByLid(token, \"rtm_npcf_follower_count_boost\");\nif (legacyBoostFeature)\n    await legacyBoostFeature.delete();\n\n// A token cannot still be resolving a Boost when it initializes. Clear stale\n// temporary state left by an interrupted or pre-fix movement.\nawait api.removeActorFlags(token.actor, {\n    followerCountBoostActive: true,\n    followerCountBoostBaseCap: true,\n    followerCountBoostStartCost: true,\n    followerCountBoostRejected: true\n});\n\nconst targetId = api.getActorFlags(token.actor, \"followerCountTargetId\");\nconst target = targetId ? canvas.tokens.get(targetId) : null;\nif (target) {\n    await api.removeExtraActions(token.actor, BOOST_ACTION);\n    await api.addExtraActions(token.actor, {\n        name: BOOST_ACTION,\n        activation: \"Free\",\n        detail: \"Once per turn, Boost up to Speed. Move as close to the followed target as possible.\",\n        icon: \"fas fa-forward\"\n    });\n}",
+          "onMessage": "",
+          "triggerSelf": true,
+          "triggerOther": true,
+          "outOfCombat": true,
+          "dispositionFilter": null
+        }
+      ]
+    },
+    "npc-rebake_npcf_hardened_target_priest": {
+      "itemType": "any",
+      "reactions": [
+        {
+          "reactionPath": "",
+          "triggers": [
+            "onEnterCombat"
+          ],
+          "evaluate": "return triggerData.triggeringToken?.id === reactorToken.id;",
+          "comments": "LA 4.1.8 review: passive bonuses install on token initialization and combat entry. Incoming tech Difficulty now benefits from the 4.1.6 current-scene applyToTargetter fix. Fortress detection accepts rebaked, legacy, and named features.",
+          "triggerDescription": "",
+          "effectDescription": "The Priest gains <strong>+1 Accuracy</strong> on <strong>Systems saves</strong>, and <strong>tech attacks</strong> against them receive <strong>+1 Difficulty</strong>. <strong>Fortress</strong> increases both values from +1 to +3.",
+          "isReaction": false,
+          "actionType": "Automation",
+          "frequency": "Unlimited",
+          "checkReaction": false,
+          "requireCanProvoke": false,
+          "checkUsage": false,
+          "autoActivate": true,
+          "awaitActivationCompletion": true,
+          "onlyOnSourceMatch": false,
+          "activationType": "code",
+          "activationMode": "instead",
+          "activationMacro": "",
+          "activationCode": "// Optional presentation layer, following the guarded Sequencer/Lancer Weapon FX pattern used by the Lancer Automations 4.1.8 defaults.\ntry {\n    const rtmFxApi = game.modules.get(\"lancer-weapon-fx\")?.api;\n    if (rtmFxApi && globalThis.Sequencer && typeof Sequence !== \"undefined\") {\n        const rtmFxFiles = [\n            \"modules/lancer-weapon-fx/soundfx/MetallicThump.ogg\",\n            \"jb2a.shield.01.intro.blue\"\n        ];\n        await Sequencer.Preloader.preloadForClients(rtmFxFiles);\n        await new Sequence()\n            .sound()\n                .file(rtmFxFiles[0])\n                .volume(rtmFxApi.getEffectVolume(0.65))\n            .effect()\n                .file(rtmFxFiles[1])\n                .atLocation(reactorToken)\n                .scaleToObject(1.8)\n                .filter(\"Glow\", { color: 0xffd36b })\n                .play();\n    }\n}\ncatch (error) {\n    console.warn(\"Road to Midnight automation FX skipped; mechanics continue normally.\", error);\n}\n\n// -----------------------------------------------------------------------------\n// HARDENED TARGET\n// -----------------------------------------------------------------------------\n// Install the passive bonuses when the Priest enters combat.\n// Fortress upgrades both values from +1 to +3.\n\nconst hasFortress = reactorToken.actor.items.some(feature => {\n    const lid = String(feature.system?.lid ?? \"\").toLowerCase();\n    const name = String(feature.name ?? \"\").toLowerCase();\n    return lid === \"npc-rebake_npcf_fortress_priest\"\n        || lid === \"npcf_fortress_priest\"\n        || name === \"fortress\";\n});\n\nconst hardenedValue = hasFortress ? 3 : 1;\nconst bonusName = hasFortress\n    ? \"Hardened Target — Fortress\"\n    : \"Hardened Target\";\n\n// -----------------------------------------------------------------------------\n// SYSTEMS SAVES\n// -----------------------------------------------------------------------------\n\nawait api.addConstantBonus(reactorToken.actor, {\n    id: `hardened-target-systems-${item.id}`,\n    name: bonusName,\n    type: \"accuracy\",\n    val: hardenedValue,\n    rollTypes: [\"systems\"],\n    condition: (_state, _actor, data) =>\n        String(data?.title ?? \"\").toLowerCase().includes(\"save\")\n});\n\n// -----------------------------------------------------------------------------\n// INCOMING TECH ATTACKS\n// -----------------------------------------------------------------------------\n\nawait api.addConstantBonus(reactorToken.actor, {\n    id: `hardened-target-tech-${item.id}`,\n    name: bonusName,\n    type: \"difficulty\",\n    val: hardenedValue,\n    rollTypes: [\"tech_attack\", \"tech\"],\n    applyToTargetter: true\n});",
+          "onInit": "const hasFortress = token.actor.items.some(feature => {\n    const lid = String(feature.system?.lid ?? \"\").toLowerCase();\n    const name = String(feature.name ?? \"\").toLowerCase();\n    return lid === \"npc-rebake_npcf_fortress_priest\"\n        || lid === \"npcf_fortress_priest\"\n        || name === \"fortress\";\n});\nconst hardenedValue = hasFortress ? 3 : 1;\nconst bonusName = hasFortress ? \"Hardened Target — Fortress\" : \"Hardened Target\";\nawait api.addConstantBonus(token.actor, {\n    id: \"hardened-target-systems-\" + item.id,\n    name: bonusName,\n    type: \"accuracy\",\n    val: hardenedValue,\n    rollTypes: [\"systems\"],\n    condition: (_state, _actor, data) => String(data?.title ?? \"\").toLowerCase().includes(\"save\")\n});\nawait api.addConstantBonus(token.actor, {\n    id: \"hardened-target-tech-\" + item.id,\n    name: bonusName,\n    type: \"difficulty\",\n    val: hardenedValue,\n    rollTypes: [\"tech_attack\", \"tech\"],\n    applyToTargetter: true\n});",
+          "onMessage": "",
+          "triggerSelf": true,
+          "triggerOther": false,
+          "outOfCombat": false,
+          "dispositionFilter": null
+        }
+      ]
+    },
+    "npc-rebake_npcf_investiture_priest": {
+      "itemType": "any",
+      "reactions": [
+        {
+          "reactionPath": "",
+          "triggers": [
+            "onPreMove",
+            "onStatusApplied",
+            "onStatusRemoved",
+            "onDestroyed",
+            "onUpdate"
+          ],
+          "evaluate": "const linkedTargetId = api.getActorFlags(\n    reactorToken.actor,\n    \"investitureTargetId\"\n);\n\nconst triggeringToken = triggerData.triggeringToken ?? triggerData.token;\n\nconst getLinkedTarget = () =>\n    linkedTargetId ? canvas.tokens.get(linkedTargetId) : null;\n\nconst isParticipant = token =>\n    !!token && (\n        token.id === reactorToken.id ||\n        (!!linkedTargetId && token.id === linkedTargetId)\n    );\n\nif (triggerType === \"onActivation\") {\n    return triggeringToken?.id === reactorToken.id\n        && triggerData.item?.system?.lid === item?.system?.lid;\n}\n\nif (!linkedTargetId)\n    return false;\n\nif (triggerType === \"onPreMove\") {\n    if (!isParticipant(triggeringToken))\n        return false;\n\n    // Forced/module-driven moves are handled after they actually land by onUpdate.\n    if (triggerData.moveInfo?.isInvoluntary || triggerData.moveInfo?.isUndo)\n        return false;\n\n    const linkedTarget = getLinkedTarget();\n    if (!linkedTarget)\n        return false;\n\n    const otherToken = triggeringToken.id === reactorToken.id\n        ? linkedTarget\n        : reactorToken;\n\n    // Teleports do not traverse intermediate spaces; only the destination matters.\n    if (triggerData.moveInfo?.isTeleport) {\n        return api.getMinGridDistance(\n            triggeringToken,\n            otherToken,\n            triggerData.endPos\n        ) > 5;\n    }\n\n    const path = triggerData.moveInfo?.pathHexes ?? [];\n    const startIndex = Math.max(0, path.historyStartIndex ?? 0);\n\n    for (let i = startIndex; i < path.length; i++) {\n        const step = path[i];\n\n        const distance = api.getMinGridDistance(\n            triggeringToken,\n            otherToken,\n            { x: step.x, y: step.y }\n        );\n\n        if (distance > 5)\n            return true;\n    }\n\n    // Fallback for movement payloads without a usable path.\n    return api.getMinGridDistance(\n        triggeringToken,\n        otherToken,\n        triggerData.endPos\n    ) > 5;\n}\n\nif (triggerType === \"onUpdate\") {\n    if (!isParticipant(triggeringToken))\n        return false;\n\n    const change = triggerData.change ?? {};\n    const positionChanged =\n        Object.prototype.hasOwnProperty.call(change, \"x\") ||\n        Object.prototype.hasOwnProperty.call(change, \"y\") ||\n        Object.prototype.hasOwnProperty.call(change, \"elevation\");\n\n    if (!positionChanged)\n        return false;\n\n    const linkedTarget = getLinkedTarget();\n\n    // If the linked token has vanished, clear stale Investiture state.\n    if (!linkedTarget)\n        return true;\n\n    return api.getMinGridDistance(\n        reactorToken,\n        linkedTarget\n    ) > 5;\n}\n\nif (triggerType === \"onStatusApplied\" || triggerType === \"onStatusRemoved\") {\n    if (!isParticipant(triggeringToken))\n        return false;\n\n    const statusId = String(triggerData.statusId ?? \"\").toLowerCase();\n    if (statusId !== \"jammed\" && statusId !== \"stunned\")\n        return false;\n\n    // Do not bounce an effect created by this same Investiture back across the link.\n    const flags = triggerData.effect?.flags?.[\"lancer-automations\"] ?? {};\n    return flags.investitureMirrorSourceItemId !== item.id;\n}\n\nif (triggerType === \"onDestroyed\") {\n    return isParticipant(triggeringToken);\n}\n\nreturn false;",
+          "comments": "LA 4.1.8 review: lifecycle remains isolated from exact-source activation. Shared Hardened Target tech Difficulty now benefits from the 4.1.6 current-scene applyToTargetter fix. Movement, Jammed/Stunned mirroring, separation, and destruction cleanup remain source-stamped.",
+          "triggerDescription": "",
+          "effectDescription": "The Priest links systems with an allied mech or vehicle within <strong>Range 5</strong>. As long as they remain linked and within <strong>Range 5</strong>, the target gets <strong>+1 Accuracy</strong> on all attacks and gains the benefits of <strong>Hardened Target</strong>. If either character becomes <strong>Jammed</strong> or <strong>Stunned</strong>, the other character also receives the condition for the same duration or until the link is disabled. The link is disabled if either character is destroyed or moves more than <strong>5 spaces</strong> from the other. The Priest can only link with one character at a time.",
+          "isReaction": false,
+          "actionType": "Quick Action",
+          "frequency": "Unlimited",
+          "checkReaction": false,
+          "requireCanProvoke": false,
+          "checkUsage": false,
+          "autoActivate": true,
+          "awaitActivationCompletion": true,
+          "onlyOnSourceMatch": false,
+          "activationType": "code",
+          "activationMode": "instead",
+          "activationMacro": "",
+          "activationCode": "if (triggerType === \"onActivation\") {\n    // Optional presentation layer, following the guarded Sequencer/Lancer Weapon FX pattern used by the Lancer Automations 4.1.8 defaults.\n    try {\n        const rtmFxApi = game.modules.get(\"lancer-weapon-fx\")?.api;\n        if (rtmFxApi && globalThis.Sequencer && typeof Sequence !== \"undefined\") {\n            const rtmFxFiles = [\n                \"modules/lancer-weapon-fx/soundfx/TechPrepare.ogg\",\n                \"jb2a.healing_generic.400px.blue\"\n            ];\n            await Sequencer.Preloader.preloadForClients(rtmFxFiles);\n            await new Sequence()\n                .sound()\n                    .file(rtmFxFiles[0])\n                    .volume(rtmFxApi.getEffectVolume(0.65))\n                .effect()\n                    .file(rtmFxFiles[1])\n                    .atLocation(reactorToken)\n                    .scaleToObject(1.8)\n                    .filter(\"Glow\", { color: 0x9fd8ff })\n                    .play();\n        }\n    }\n    catch (error) {\n        console.warn(\"Road to Midnight automation FX skipped; mechanics continue normally.\", error);\n    }\n    \n    \n}\n\nconst ATTACK_BONUS_ID = `investiture-attack-${item.id}`;\nconst SYSTEMS_BONUS_ID = `investiture-systems-${item.id}`;\nconst TECH_BONUS_ID = `investiture-tech-${item.id}`;\n\nconst getLinkedTarget = () => {\n    const targetId = api.getActorFlags(\n        reactorToken.actor,\n        \"investitureTargetId\"\n    );\n\n    return targetId ? canvas.tokens.get(targetId) : null;\n};\n\nconst clearInvestitureMirrors = async (tokens) => {\n    const validTokens = tokens.filter(Boolean);\n    if (!validTokens.length)\n        return;\n\n    await api.removeEffectsByNameFromTokens({\n        tokens: validTokens,\n        effectNames: [\"jammed\", \"stunned\"],\n        extraFlags: {\n            investitureMirrorSourceItemId: item.id\n        },\n        notify: false\n    });\n};\n\nconst removeInvestitureBonuses = async (target) => {\n    if (!target?.actor)\n        return;\n\n    await api.removeConstantBonus(target.actor, ATTACK_BONUS_ID);\n    await api.removeConstantBonus(target.actor, SYSTEMS_BONUS_ID);\n    await api.removeConstantBonus(target.actor, TECH_BONUS_ID);\n};\n\nconst clearInvestiture = async () => {\n    const linkedTarget = getLinkedTarget();\n\n    await removeInvestitureBonuses(linkedTarget);\n    await clearInvestitureMirrors([reactorToken, linkedTarget]);\n\n    await api.removeActorFlags(reactorToken.actor, {\n        investitureTargetId: true\n    });\n\n    await reactorToken.document.unsetFlag(\n        \"lancer-automations\",\n        \"ownerActorUuid\"\n    );\n\n    await reactorToken.document.unsetFlag(\n        \"lancer-automations\",\n        \"ownerName\"\n    );\n};\n\nconst installInvestitureBonuses = async (target) => {\n    const hasFortress = reactorToken.actor.items.some(feature => {\n        const lid = String(feature.system?.lid ?? \"\").toLowerCase();\n        const name = String(feature.name ?? \"\").toLowerCase();\n        return lid === \"npc-rebake_npcf_fortress_priest\"\n            || lid === \"npcf_fortress_priest\"\n            || name === \"fortress\";\n    });\n\n    const hardenedValue = hasFortress ? 3 : 1;\n    const hardenedName = hasFortress\n        ? \"Investiture — Hardened Target — Fortress\"\n        : \"Investiture — Hardened Target\";\n\n    // Investiture itself: +1 Accuracy on all attacks, including tech attacks.\n    await api.addConstantBonus(target.actor, {\n        id: ATTACK_BONUS_ID,\n        name: \"Investiture\",\n        type: \"accuracy\",\n        val: 1,\n        rollTypes: [\"attack\"],\n        context: {\n            investiture: true,\n            sourcePriestTokenId: reactorToken.id,\n            sourceItemId: item.id\n        }\n    });\n\n    // Share Hardened Target's Systems-save protection.\n    await api.addConstantBonus(target.actor, {\n        id: SYSTEMS_BONUS_ID,\n        name: hardenedName,\n        type: \"accuracy\",\n        val: hardenedValue,\n        rollTypes: [\"systems\"],\n        condition: (_state, _actor, data) =>\n            String(data?.title ?? \"\").toLowerCase().includes(\"save\"),\n        context: {\n            investiture: true,\n            hardenedTarget: true,\n            sourcePriestTokenId: reactorToken.id,\n            sourceItemId: item.id\n        }\n    });\n\n    // Share Hardened Target's protection against incoming tech attacks.\n    await api.addConstantBonus(target.actor, {\n        id: TECH_BONUS_ID,\n        name: hardenedName,\n        type: \"difficulty\",\n        val: hardenedValue,\n        rollTypes: [\"tech_attack\", \"tech\"],\n        applyToTargetter: true,\n        context: {\n            investiture: true,\n            hardenedTarget: true,\n            sourcePriestTokenId: reactorToken.id,\n            sourceItemId: item.id\n        }\n    });\n};\n\n// -----------------------------------------------------------------------------\n// ACTIVATE / CHANGE INVESTITURE TARGET\n// -----------------------------------------------------------------------------\n\nif (triggerType === \"onActivation\") {\n    const selected = await api.chooseToken(reactorToken, {\n        range: 5,\n        count: 1,\n        disposition: \"friendly\",\n        includeSelf: false,\n        soft: false,\n        title: \"INVESTITURE — SELECT LINK\",\n        description: \"Choose one allied mech or vehicle within Range 5.\",\n        icon: \"fas fa-link\",\n        autoConfirm: true,\n        filter: token => [\"mech\", \"npc\", \"vehicle\"].includes(token.actor?.type),\n        filterWarning: \"Investiture can only link to an allied mech or vehicle.\"\n    });\n\n    const target = selected?.[0];\n    if (!target)\n        return;\n\n    const oldTarget = getLinkedTarget();\n\n    // Re-selecting the same target simply refreshes the passive bonuses without\n    // disturbing any Jammed/Stunned mirrors currently tied to this link.\n    if (oldTarget?.id === target.id) {\n        await installInvestitureBonuses(target);\n        return;\n    }\n\n    // The Priest may only maintain one Investiture link at a time.\n    if (oldTarget)\n        await clearInvestiture();\n\n    await api.addActorFlags(reactorToken.actor, {\n        investitureTargetId: target.id\n    });\n\n    await installInvestitureBonuses(target);\n\n    // Preserve the existing visual-owner link convention used by these NPC\n    // automations so the Priest visibly points at its current Investiture ally.\n    await reactorToken.document.setFlag(\n        \"lancer-automations\",\n        \"ownerActorUuid\",\n        target.actor.uuid\n    );\n\n    await reactorToken.document.setFlag(\n        \"lancer-automations\",\n        \"ownerName\",\n        target.actor.name\n    );\n\n    return;\n}\n\n// -----------------------------------------------------------------------------\n// VOLUNTARY MOVEMENT THAT WOULD BREAK RANGE 5\n// -----------------------------------------------------------------------------\n\nif (triggerType === \"onPreMove\") {\n    const mover = triggerData.triggeringToken ?? triggerData.token;\n    const linkedTarget = getLinkedTarget();\n\n    if (!mover || !linkedTarget)\n        return;\n\n    const otherToken = mover.id === reactorToken.id\n        ? linkedTarget\n        : reactorToken;\n\n    const preConfirm = async () => {\n        const result = await api.startChoiceCard({\n            mode: \"or\",\n            title: \"INVESTITURE — LINK BREAK\",\n            icon: \"fas fa-link-slash\",\n            description: `Moving <b>${mover.name}</b> along this path will take them more than <b>Range 5</b> from <b>${otherToken.name}</b> and disable Investiture.`,\n            item,\n            originToken: reactorToken,\n            relatedToken: mover,\n            userIdControl: api.getTokenOwnerUserId(mover),\n            choices: [\n                {\n                    text: \"Break Link and Move\",\n                    icon: \"fas fa-link-slash\"\n                },\n                {\n                    text: \"Keep Link\",\n                    icon: \"fas fa-link\"\n                }\n            ]\n        });\n\n        // Closing the card or choosing Keep Link leaves the movement cancelled.\n        if (!result || result.choiceIdx !== 0)\n            return true;\n\n        // The player explicitly accepted the consequence. Break Investiture\n        // before replaying the original move, so reactions during that movement\n        // do not incorrectly benefit from the link.\n        await clearInvestiture();\n        return false;\n    };\n\n    await triggerData.cancelTriggeredMove(\n        `<b>${mover.name}</b>'s movement would break Investiture with <b>${otherToken.name}</b>.`,\n        false,\n        api.getTokenOwnerUserId(mover),\n        preConfirm,\n        null,\n        {\n            item,\n            originToken: reactorToken,\n            relatedToken: otherToken\n        }\n    );\n\n    return;\n}\n\n// -----------------------------------------------------------------------------\n// POST-MOVE SAFETY NET\n// -----------------------------------------------------------------------------\n// onUpdate is intentionally gated to position changes in evaluate(). This catches\n// involuntary movement, teleports, and other module-driven moves that do not use\n// the ordinary voluntary movement path.\n\nif (triggerType === \"onUpdate\") {\n    await clearInvestiture();\n    return;\n}\n\n// -----------------------------------------------------------------------------\n// JAMMED / STUNNED SHARING\n// -----------------------------------------------------------------------------\n\nif (triggerType === \"onStatusApplied\") {\n    const affected = triggerData.triggeringToken;\n    const linkedTarget = getLinkedTarget();\n\n    if (!affected || !linkedTarget)\n        return;\n\n    const otherToken = affected.id === reactorToken.id\n        ? linkedTarget\n        : reactorToken;\n\n    const statusId = String(triggerData.statusId ?? \"\").toLowerCase();\n\n    await api.applyEffectsToTokens(\n        {\n            tokens: [otherToken],\n            effectNames: [statusId],\n            note: \"Investiture\",\n            duration: { label: \"indefinite\" },\n            notify: false\n        },\n        {\n            investitureMirrorSourceItemId: item.id,\n            investitureMirrorSourcePriestId: reactorToken.id,\n            investitureOriginalEffectId: triggerData.effect?.id,\n            investitureOriginalTokenId: affected.id\n        }\n    );\n\n    return;\n}\n\nif (triggerType === \"onStatusRemoved\") {\n    const affected = triggerData.triggeringToken;\n    const linkedTarget = getLinkedTarget();\n\n    if (!affected || !linkedTarget)\n        return;\n\n    const otherToken = affected.id === reactorToken.id\n        ? linkedTarget\n        : reactorToken;\n\n    const statusId = String(triggerData.statusId ?? \"\").toLowerCase();\n\n    // The mirrored copy is indefinite, but is source-stamped to the original\n    // status effect. Removing the original therefore removes exactly its mirror,\n    // reproducing \"for the same duration\" without guessing the source duration.\n    await api.removeEffectsByNameFromTokens({\n        tokens: [otherToken],\n        effectNames: [statusId],\n        extraFlags: {\n            investitureMirrorSourceItemId: item.id,\n            investitureOriginalEffectId: triggerData.effect?.id\n        },\n        notify: false\n    });\n\n    return;\n}\n\n// -----------------------------------------------------------------------------\n// DESTRUCTION CLEANUP\n// -----------------------------------------------------------------------------\n\nif (triggerType === \"onDestroyed\") {\n    await clearInvestiture();\n}",
+          "onInit": "",
+          "onMessage": "",
+          "triggerSelf": true,
+          "triggerOther": true,
+          "outOfCombat": false,
+          "dispositionFilter": null
+        },
+        {
+          "reactionPath": "",
+          "triggers": [
+            "onActivation"
+          ],
+          "evaluate": "return triggerData.triggeringToken?.id === reactorToken.id\n    && triggerData.item?.id === item.id\n    && triggerData.item?.system?.lid === item.system?.lid;",
+          "comments": "LA 4.1.8 review: exact-source Investiture activation remains separate from the broad linked-token lifecycle, preventing unrelated activations from intercepting it.",
+          "triggerDescription": "",
+          "effectDescription": "Choose one allied mech or vehicle within Range 5 and establish or change the Investiture link.",
+          "isReaction": false,
+          "actionType": "Quick Action",
+          "frequency": "Unlimited",
+          "checkReaction": false,
+          "requireCanProvoke": false,
+          "checkUsage": false,
+          "autoActivate": true,
+          "awaitActivationCompletion": true,
+          "onlyOnSourceMatch": true,
+          "activationType": "code",
+          "activationMode": "instead",
+          "activationMacro": "",
+          "activationCode": "if (triggerType === \"onActivation\") {\n    // Optional presentation layer, following the guarded Sequencer/Lancer Weapon FX pattern used by the Lancer Automations 4.1.8 defaults.\n    try {\n        const rtmFxApi = game.modules.get(\"lancer-weapon-fx\")?.api;\n        if (rtmFxApi && globalThis.Sequencer && typeof Sequence !== \"undefined\") {\n            const rtmFxFiles = [\n                \"modules/lancer-weapon-fx/soundfx/TechPrepare.ogg\",\n                \"jb2a.healing_generic.400px.blue\"\n            ];\n            await Sequencer.Preloader.preloadForClients(rtmFxFiles);\n            await new Sequence()\n                .sound()\n                    .file(rtmFxFiles[0])\n                    .volume(rtmFxApi.getEffectVolume(0.65))\n                .effect()\n                    .file(rtmFxFiles[1])\n                    .atLocation(reactorToken)\n                    .scaleToObject(1.8)\n                    .filter(\"Glow\", { color: 0x9fd8ff })\n                    .play();\n        }\n    }\n    catch (error) {\n        console.warn(\"Road to Midnight automation FX skipped; mechanics continue normally.\", error);\n    }\n    \n    \n}\n\nconst ATTACK_BONUS_ID = `investiture-attack-${item.id}`;\nconst SYSTEMS_BONUS_ID = `investiture-systems-${item.id}`;\nconst TECH_BONUS_ID = `investiture-tech-${item.id}`;\n\nconst getLinkedTarget = () => {\n    const targetId = api.getActorFlags(\n        reactorToken.actor,\n        \"investitureTargetId\"\n    );\n\n    return targetId ? canvas.tokens.get(targetId) : null;\n};\n\nconst clearInvestitureMirrors = async (tokens) => {\n    const validTokens = tokens.filter(Boolean);\n    if (!validTokens.length)\n        return;\n\n    await api.removeEffectsByNameFromTokens({\n        tokens: validTokens,\n        effectNames: [\"jammed\", \"stunned\"],\n        extraFlags: {\n            investitureMirrorSourceItemId: item.id\n        },\n        notify: false\n    });\n};\n\nconst removeInvestitureBonuses = async (target) => {\n    if (!target?.actor)\n        return;\n\n    await api.removeConstantBonus(target.actor, ATTACK_BONUS_ID);\n    await api.removeConstantBonus(target.actor, SYSTEMS_BONUS_ID);\n    await api.removeConstantBonus(target.actor, TECH_BONUS_ID);\n};\n\nconst clearInvestiture = async () => {\n    const linkedTarget = getLinkedTarget();\n\n    await removeInvestitureBonuses(linkedTarget);\n    await clearInvestitureMirrors([reactorToken, linkedTarget]);\n\n    await api.removeActorFlags(reactorToken.actor, {\n        investitureTargetId: true\n    });\n\n    await reactorToken.document.unsetFlag(\n        \"lancer-automations\",\n        \"ownerActorUuid\"\n    );\n\n    await reactorToken.document.unsetFlag(\n        \"lancer-automations\",\n        \"ownerName\"\n    );\n};\n\nconst installInvestitureBonuses = async (target) => {\n    const hasFortress = reactorToken.actor.items.some(feature => {\n        const lid = String(feature.system?.lid ?? \"\").toLowerCase();\n        const name = String(feature.name ?? \"\").toLowerCase();\n        return lid === \"npc-rebake_npcf_fortress_priest\"\n            || lid === \"npcf_fortress_priest\"\n            || name === \"fortress\";\n    });\n\n    const hardenedValue = hasFortress ? 3 : 1;\n    const hardenedName = hasFortress\n        ? \"Investiture — Hardened Target — Fortress\"\n        : \"Investiture — Hardened Target\";\n\n    // Investiture itself: +1 Accuracy on all attacks, including tech attacks.\n    await api.addConstantBonus(target.actor, {\n        id: ATTACK_BONUS_ID,\n        name: \"Investiture\",\n        type: \"accuracy\",\n        val: 1,\n        rollTypes: [\"attack\"],\n        context: {\n            investiture: true,\n            sourcePriestTokenId: reactorToken.id,\n            sourceItemId: item.id\n        }\n    });\n\n    // Share Hardened Target's Systems-save protection.\n    await api.addConstantBonus(target.actor, {\n        id: SYSTEMS_BONUS_ID,\n        name: hardenedName,\n        type: \"accuracy\",\n        val: hardenedValue,\n        rollTypes: [\"systems\"],\n        condition: (_state, _actor, data) =>\n            String(data?.title ?? \"\").toLowerCase().includes(\"save\"),\n        context: {\n            investiture: true,\n            hardenedTarget: true,\n            sourcePriestTokenId: reactorToken.id,\n            sourceItemId: item.id\n        }\n    });\n\n    // Share Hardened Target's protection against incoming tech attacks.\n    await api.addConstantBonus(target.actor, {\n        id: TECH_BONUS_ID,\n        name: hardenedName,\n        type: \"difficulty\",\n        val: hardenedValue,\n        rollTypes: [\"tech_attack\", \"tech\"],\n        applyToTargetter: true,\n        context: {\n            investiture: true,\n            hardenedTarget: true,\n            sourcePriestTokenId: reactorToken.id,\n            sourceItemId: item.id\n        }\n    });\n};\n\n// -----------------------------------------------------------------------------\n// ACTIVATE / CHANGE INVESTITURE TARGET\n// -----------------------------------------------------------------------------\n\nif (triggerType === \"onActivation\") {\n    const selected = await api.chooseToken(reactorToken, {\n        range: 5,\n        count: 1,\n        disposition: \"friendly\",\n        includeSelf: false,\n        soft: false,\n        title: \"INVESTITURE — SELECT LINK\",\n        description: \"Choose one allied mech or vehicle within Range 5.\",\n        icon: \"fas fa-link\",\n        autoConfirm: true,\n        filter: token => [\"mech\", \"npc\", \"vehicle\"].includes(token.actor?.type),\n        filterWarning: \"Investiture can only link to an allied mech or vehicle.\"\n    });\n\n    const target = selected?.[0];\n    if (!target)\n        return;\n\n    const oldTarget = getLinkedTarget();\n\n    // Re-selecting the same target simply refreshes the passive bonuses without\n    // disturbing any Jammed/Stunned mirrors currently tied to this link.\n    if (oldTarget?.id === target.id) {\n        await installInvestitureBonuses(target);\n        return;\n    }\n\n    // The Priest may only maintain one Investiture link at a time.\n    if (oldTarget)\n        await clearInvestiture();\n\n    await api.addActorFlags(reactorToken.actor, {\n        investitureTargetId: target.id\n    });\n\n    await installInvestitureBonuses(target);\n\n    // Preserve the existing visual-owner link convention used by these NPC\n    // automations so the Priest visibly points at its current Investiture ally.\n    await reactorToken.document.setFlag(\n        \"lancer-automations\",\n        \"ownerActorUuid\",\n        target.actor.uuid\n    );\n\n    await reactorToken.document.setFlag(\n        \"lancer-automations\",\n        \"ownerName\",\n        target.actor.name\n    );\n\n    return;\n}\n\n// -----------------------------------------------------------------------------\n// VOLUNTARY MOVEMENT THAT WOULD BREAK RANGE 5\n// -----------------------------------------------------------------------------\n\nif (triggerType === \"onPreMove\") {\n    const mover = triggerData.triggeringToken ?? triggerData.token;\n    const linkedTarget = getLinkedTarget();\n\n    if (!mover || !linkedTarget)\n        return;\n\n    const otherToken = mover.id === reactorToken.id\n        ? linkedTarget\n        : reactorToken;\n\n    const preConfirm = async () => {\n        const result = await api.startChoiceCard({\n            mode: \"or\",\n            title: \"INVESTITURE — LINK BREAK\",\n            icon: \"fas fa-link-slash\",\n            description: `Moving <b>${mover.name}</b> along this path will take them more than <b>Range 5</b> from <b>${otherToken.name}</b> and disable Investiture.`,\n            item,\n            originToken: reactorToken,\n            relatedToken: mover,\n            userIdControl: api.getTokenOwnerUserId(mover),\n            choices: [\n                {\n                    text: \"Break Link and Move\",\n                    icon: \"fas fa-link-slash\"\n                },\n                {\n                    text: \"Keep Link\",\n                    icon: \"fas fa-link\"\n                }\n            ]\n        });\n\n        // Closing the card or choosing Keep Link leaves the movement cancelled.\n        if (!result || result.choiceIdx !== 0)\n            return true;\n\n        // The player explicitly accepted the consequence. Break Investiture\n        // before replaying the original move, so reactions during that movement\n        // do not incorrectly benefit from the link.\n        await clearInvestiture();\n        return false;\n    };\n\n    await triggerData.cancelTriggeredMove(\n        `<b>${mover.name}</b>'s movement would break Investiture with <b>${otherToken.name}</b>.`,\n        false,\n        api.getTokenOwnerUserId(mover),\n        preConfirm,\n        null,\n        {\n            item,\n            originToken: reactorToken,\n            relatedToken: otherToken\n        }\n    );\n\n    return;\n}\n\n// -----------------------------------------------------------------------------\n// POST-MOVE SAFETY NET\n// -----------------------------------------------------------------------------\n// onUpdate is intentionally gated to position changes in evaluate(). This catches\n// involuntary movement, teleports, and other module-driven moves that do not use\n// the ordinary voluntary movement path.\n\nif (triggerType === \"onUpdate\") {\n    await clearInvestiture();\n    return;\n}\n\n// -----------------------------------------------------------------------------\n// JAMMED / STUNNED SHARING\n// -----------------------------------------------------------------------------\n\nif (triggerType === \"onStatusApplied\") {\n    const affected = triggerData.triggeringToken;\n    const linkedTarget = getLinkedTarget();\n\n    if (!affected || !linkedTarget)\n        return;\n\n    const otherToken = affected.id === reactorToken.id\n        ? linkedTarget\n        : reactorToken;\n\n    const statusId = String(triggerData.statusId ?? \"\").toLowerCase();\n\n    await api.applyEffectsToTokens(\n        {\n            tokens: [otherToken],\n            effectNames: [statusId],\n            note: \"Investiture\",\n            duration: { label: \"indefinite\" },\n            notify: false\n        },\n        {\n            investitureMirrorSourceItemId: item.id,\n            investitureMirrorSourcePriestId: reactorToken.id,\n            investitureOriginalEffectId: triggerData.effect?.id,\n            investitureOriginalTokenId: affected.id\n        }\n    );\n\n    return;\n}\n\nif (triggerType === \"onStatusRemoved\") {\n    const affected = triggerData.triggeringToken;\n    const linkedTarget = getLinkedTarget();\n\n    if (!affected || !linkedTarget)\n        return;\n\n    const otherToken = affected.id === reactorToken.id\n        ? linkedTarget\n        : reactorToken;\n\n    const statusId = String(triggerData.statusId ?? \"\").toLowerCase();\n\n    // The mirrored copy is indefinite, but is source-stamped to the original\n    // status effect. Removing the original therefore removes exactly its mirror,\n    // reproducing \"for the same duration\" without guessing the source duration.\n    await api.removeEffectsByNameFromTokens({\n        tokens: [otherToken],\n        effectNames: [statusId],\n        extraFlags: {\n            investitureMirrorSourceItemId: item.id,\n            investitureOriginalEffectId: triggerData.effect?.id\n        },\n        notify: false\n    });\n\n    return;\n}\n\n// -----------------------------------------------------------------------------\n// DESTRUCTION CLEANUP\n// -----------------------------------------------------------------------------\n\nif (triggerType === \"onDestroyed\") {\n    await clearInvestiture();\n}",
+          "onInit": "",
+          "onMessage": "",
+          "triggerSelf": true,
+          "triggerOther": false,
+          "outOfCombat": true,
+          "dispositionFilter": null
+        }
+      ]
+    },
+    "npc-rebake_npcf_moving_target_archer": {
+      "itemType": "npc_feature",
+      "reactions": [
+        {
+          "reactionPath": "",
+          "triggers": [
+            "onPreMove"
+          ],
+          "evaluate": "const mover = triggerData.triggeringToken ?? triggerData.token;\nif (!mover)\n    return false;\n\nconst targetId = api.getActorFlags(reactorToken.actor, \"suppressTargetId\");\nif (!targetId || mover.id !== targetId)\n    return false;\n\nif (!api.hasLineOfSight(reactorToken, mover))\n    return false;\n\nconst suppressed = api.findEffectsOnToken(\n    mover,\n    \"Suppress\",\n    { extraFlags: { suppressSourceId: reactorToken.id } }\n).length > 0;\nif (!suppressed)\n    return false;\n\nconst round = game.combat?.round ?? 0;\nif (round > 0) {\n    const used = api.getActorFlags(\n        reactorToken.actor,\n        \"moving_target_\" + item.id + \"_round_\" + round\n    ) ?? [];\n    if (Array.isArray(used) && used.includes(\"_self\"))\n        return false;\n}\n\nreturn true;",
+          "comments": "LA 4.1.8 implementation: interrupts the Suppress target at movement start, asks whether to fire, consumes the reaction and once-per-round use only on acceptance, ends Suppress, resolves the rebaked Light Machine Gun attack, then replays the original movement.",
+          "triggerDescription": "The Archer's Suppress target starts to move.",
+          "effectDescription": "The Archer attacks them with the Light Machine Gun before the triggering movement resolves.",
+          "isReaction": true,
+          "actionType": "Reaction",
+          "frequency": "1/Round",
+          "checkReaction": true,
+          "requireCanProvoke": true,
+          "checkUsage": false,
+          "autoActivate": true,
+          "awaitActivationCompletion": true,
+          "onlyOnSourceMatch": false,
+          "activationType": "code",
+          "activationMode": "instead",
+          "activationMacro": "",
+          "activationCode": "const mover = triggerData.triggeringToken ?? triggerData.token;\nif (!mover)\n    return;\n\nconst lmg = api.findItemByLid(\n    reactorToken.actor,\n    \"npc-rebake_npcf_light_machine_gun_archer\"\n);\nif (!lmg) {\n    ui.notifications.warn(\"Moving Target: Light Machine Gun not found on \" + reactorToken.name + \".\");\n    return;\n}\n\nconst preConfirm = async () => {\n    const ask = await api.askCard({\n        title: \"MOVING TARGET\",\n        icon: api.getActivationIcon(\"reaction\"),\n        description: \"<b>\" + mover.name + \"</b> is starting to move while Suppressed by <b>\" + reactorToken.name + \"</b>. Fire the Light Machine Gun before they move?\",\n        item,\n        originToken: reactorToken,\n        relatedToken: mover,\n        owner: reactorToken,\n        yesText: \"Fire\",\n        yesIcon: \"fas fa-crosshairs\",\n        noText: \"Let Them Move\",\n        noIcon: \"fas fa-person-running\"\n    });\n\n    if (!ask?.confirmed)\n        return false;\n\n    const available = await api.consumeOncePerRound(\n        reactorToken,\n        \"moving_target_\" + item.id\n    );\n    if (!available) {\n        ui.notifications.warn(\"Moving Target has already been used this round.\");\n        return false;\n    }\n\n    await api.setReaction(reactorToken, false);\n\n    // Using Moving Target immediately ends this Archer's Suppress link.\n    await api.removeEffectsByNameFromTokens({\n        tokens: [mover],\n        effectNames: [\"Suppress\", \"impaired\"],\n        extraFlags: { suppressSourceId: reactorToken.id },\n        notify: false\n    });\n    await api.removeActorFlags(reactorToken.actor, {\n        suppressTargetId: true,\n        suppressLosLost: true\n    });\n\n    const suppressItem = api.findItemByLid(\n        reactorToken.actor,\n        \"npc-rebake_npcf_suppress_archer\"\n    );\n    if (suppressItem && api.getActivatedItems(reactorToken).some(active => active.id === suppressItem.id))\n        await api.endItemActivation(suppressItem, reactorToken);\n\n    const hasSuperiorSentinel = reactorToken.actor.items.some(feature =>\n        feature.system?.lid === \"npc-rebake_npcf_superior_sentinel_archer\"\n    );\n    const bonusId = \"superior-sentinel-moving-target-\" + item.id;\n    if (hasSuperiorSentinel) {\n        await api.addGlobalBonus(reactorToken.actor, {\n            id: bonusId,\n            name: \"Superior Sentinel\",\n            type: \"accuracy\",\n            val: 1,\n            rollTypes: [\"attack\"],\n            applyTo: [mover.id]\n        }, { origin: reactorToken });\n    }\n\n    try {\n        await api.attackWith(lmg, [mover]);\n    }\n    catch (error) {\n        console.error(\"Moving Target: Light Machine Gun attack failed.\", error);\n        ui.notifications.error(\"Moving Target: the Light Machine Gun attack could not be completed.\");\n    }\n    finally {\n        if (hasSuperiorSentinel)\n            await api.removeGlobalBonus(reactorToken.actor, bonus => bonus.id === bonusId);\n    }\n\n    // False replays the original movement after the awaited attack.\n    return false;\n};\n\ntriggerData.cancelTriggeredMove(\n    \"<b>\" + reactorToken.name + \"</b> may use Moving Target against <b>\" + mover.name + \"</b>.\",\n    false,\n    api.getTokenOwnerUserId(mover),\n    preConfirm,\n    null,\n    { item, originToken: reactorToken, relatedToken: mover }\n);",
+          "onInit": "",
+          "onMessage": "",
+          "triggerSelf": false,
+          "triggerOther": true,
+          "outOfCombat": false,
+          "dispositionFilter": null
+        }
+      ]
+    },
+    "npc-rebake_npcf_razor_swarm_hive": {
+      "itemType": "any",
+      "reactions": [
+        {
+          "reactionPath": "",
+          "triggers": [
+            "onTurnStart"
+          ],
+          "evaluate": "if (triggerData.triggeringToken?.id !== reactorToken.id)\n    return false;\n\nreturn canvas.scene.templates.some(template => {\n    const swarm = template.getFlag(\"lancer-automations\", \"razorSwarm\");\n    return swarm?.ownerActorUuid === reactorToken.actor.uuid;\n});",
+          "comments": "LA 4.1.8 review: current trigger/API usage remains valid. Reviewed against Lancer Automations 4.1.8 defaults and APIs. Razor Swarm start-of-turn movement. Optionally replaces the existing swarm with a new Blast 1 template within 2 spaces of its former centre, preserving swarm identity, Burn tracking, TemplateMacro actions, and visuals.",
+          "triggerDescription": "",
+          "effectDescription": "At the start of the Hive's turn, they may move their Razor Swarm up to 2 spaces in any direction, including into spaces occupied by other characters.",
+          "isReaction": false,
+          "actionType": "Automation",
+          "frequency": "Unlimited",
+          "checkReaction": false,
+          "requireCanProvoke": false,
+          "checkUsage": false,
+          "autoActivate": true,
+          "awaitActivationCompletion": true,
+          "onlyOnSourceMatch": false,
+          "activationType": "code",
+          "activationMode": "instead",
+          "activationMacro": "",
+          "activationCode": "const FLAG_SCOPE = \"lancer-automations\";\nconst FLAG_KEY = \"razorSwarm\";\n\n// -----------------------------------------------------------------------------\n// FIND THIS HIVE'S CURRENT RAZOR SWARM\n// -----------------------------------------------------------------------------\n\nconst oldTemplate = canvas.scene.templates.find(template => {\n    const swarm = template.getFlag(FLAG_SCOPE, FLAG_KEY);\n    return swarm?.ownerActorUuid === reactorToken.actor.uuid;\n});\n\nif (!oldTemplate)\n    return;\n\n// -----------------------------------------------------------------------------\n// OPTIONAL START-OF-TURN MOVEMENT\n// -----------------------------------------------------------------------------\n\nconst choice = await api.startChoiceCard({\n    mode: \"or\",\n    title: \"RAZOR SWARM\",\n    icon: \"fas fa-bugs\",\n    description:\n        `${reactorToken.name} may move their Razor Swarm up to ` +\n        `<b>2 spaces</b>.`,\n    item,\n    originToken: reactorToken,\n    userIdControl: api.getTokenOwnerUserId(reactorToken),\n    choices: [\n        {\n            text: \"Move Razor Swarm\",\n            icon: \"fas fa-arrows-alt\"\n        },\n        {\n            text: \"Leave It In Place\",\n            icon: \"fas fa-times\"\n        }\n    ]\n});\n\nif (!choice || choice.choiceIdx !== 0)\n    return;\n\n// -----------------------------------------------------------------------------\n// PRESERVE THE CURRENT SWARM STATE\n// -----------------------------------------------------------------------------\n// This includes swarmId, owner, tier, Burn value, and burnedThisRound.\n\nconst swarmState = foundry.utils.deepClone(\n    oldTemplate.getFlag(FLAG_SCOPE, FLAG_KEY)\n);\n\n// Preserve the complete TemplateMacro configuration too, including all of\n// the cover and Burn actions already installed on the swarm.\nconst templateMacroFlags = foundry.utils.deepClone(\n    oldTemplate.flags?.templatemacro ?? {}\n);\n\n// -----------------------------------------------------------------------------\n// PLACE THE REPOSITIONED SWARM\n// -----------------------------------------------------------------------------\n// Unlike initial deployment, this MAY overlap other characters.\n\nconst zones = await api.placeZone(reactorToken, {\n    range: 2,\n    rangeOrigin: {\n        x: oldTemplate.x,\n        y: oldTemplate.y\n    },\n    size: 1,\n    type: \"Blast\",\n    count: 1,\n    centerLabel: \"RAZOR SWARM\",\n    title: \"MOVE RAZOR SWARM\",\n    description:\n        \"Move the Razor Swarm up to 2 spaces from its current position. \" +\n        \"The new area may overlap other characters.\",\n    fillColor: oldTemplate.fillColor,\n    borderColor: oldTemplate.borderColor,\n    texture: oldTemplate.texture\n});\n\n// Cancelled placement — leave the existing swarm untouched.\nif (!zones?.length)\n    return;\n\nconst newTemplate = zones[0].template;\n\n// -----------------------------------------------------------------------------\n// TRANSFER THE OLD SWARM INTO THE NEW TEMPLATE\n// -----------------------------------------------------------------------------\n\nawait newTemplate.update({\n    [`flags.${FLAG_SCOPE}.${FLAG_KEY}`]: swarmState,\n    \"flags.templatemacro\": templateMacroFlags\n});\n\nnewTemplate.object?.refresh();\n\n// -----------------------------------------------------------------------------\n// FIRE WHENCREATED ON THE REPLACEMENT\n// -----------------------------------------------------------------------------\n// The actions were copied after the physical template was placed, so manually\n// fire whenCreated. This applies Soft Cover to any allied characters that the\n// swarm has just been moved over.\n\nawait newTemplate.callMacro(\"whenCreated\", {\n    userId: game.user.id,\n    gmId: game.users.find(user => user.active && user.isGM)?.id,\n    coords: {\n        previous: null,\n        current: {\n            x: newTemplate.x,\n            y: newTemplate.y\n        }\n    }\n});\n\n// -----------------------------------------------------------------------------\n// MOVE THE VISUAL LINK\n// -----------------------------------------------------------------------------\n\nconst linkName = `razor-swarm-link-${swarmState.swarmId}`;\n\n// Remove the beam pointing at the old location.\nawait Sequencer.EffectManager.endEffects({\n    name: linkName\n});\n\nawait Sequencer.EffectManager.endEffects({\n    name: `razor-swarm-visual-${swarmState.swarmId}`\n});\n\n// Delete the old swarm template.\n// Its whenDeleted effects clean up its old Soft Cover.\nawait oldTemplate.delete();\n\n// Create a fresh beam pointing at the replacement swarm.\nnew Sequence()\n    .effect()\n    .file(\"jb2a.energy_strands.range.standard.orange\")\n    .name(linkName)\n    .attachTo(reactorToken)\n    .stretchTo(newTemplate, {\n        attachTo: true\n    })\n    .persist()\n    .play();\n\nconst swarmVisualName =\n    `razor-swarm-visual-${swarmState.swarmId}`;\n\nnew Sequence()\n    .effect()\n    .file(\"jb2a.fireflies.many.01.red\")\n    .name(swarmVisualName)\n    .attachTo(newTemplate)\n    .scaleToObject(1, {\n        uniform: true\n    })\n    .belowTokens()\n    .persist()\n    .play();",
+          "onInit": "",
+          "onMessage": "",
+          "triggerSelf": true,
+          "triggerOther": false,
+          "outOfCombat": false,
+          "dispositionFilter": null
+        },
+        {
+          "reactionPath": "",
+          "triggers": [
+            "onActivation"
+          ],
+          "evaluate": "return true;",
+          "comments": "LA 4.1.8 review: current trigger/API usage remains valid. Reviewed against Lancer Automations 4.1.8 defaults and APIs. Razor Swarm — template foundation with native TemplateMacro cover effects and filtered once-per-round Burn on entry/turn start. Movement and owner-destruction cleanup are not yet implemented.",
+          "triggerDescription": "",
+          "effectDescription": "Deploy a Blast 1 Razor Swarm in a free area within Sensors. Allied characters gain soft cover while at least partially within the area. Hostile characters that start their turn within the area or move into it for the first time in a round take Burn based on the Hive's tier.",
+          "isReaction": false,
+          "actionType": "Quick Action",
+          "frequency": "Unlimited",
+          "checkReaction": false,
+          "requireCanProvoke": false,
+          "checkUsage": false,
+          "autoActivate": true,
+          "awaitActivationCompletion": true,
+          "onlyOnSourceMatch": true,
+          "activationType": "code",
+          "activationMode": "instead",
+          "activationMacro": "",
+          "activationCode": "const FLAG_SCOPE = \"lancer-automations\";\nconst FLAG_KEY = \"razorSwarm\";\n\n// -----------------------------------------------------------------------------\n// FIND THIS HIVE'S EXISTING RAZOR SWARM\n// -----------------------------------------------------------------------------\n\nconst oldSwarms = canvas.scene.templates.filter(template => {\n    const swarm = template.getFlag(FLAG_SCOPE, FLAG_KEY);\n\n    return swarm?.ownerActorUuid === reactorToken.actor.uuid;\n});\n\n// -----------------------------------------------------------------------------\n// PLACE NEW RAZOR SWARM\n// -----------------------------------------------------------------------------\n\nconst zones = await api.placeZone(reactorToken, {\n    range: reactorToken.actor.system.sensor_range,\n    size: 1,\n    type: \"Blast\",\n    count: 1,\n    centerLabel: \"RAZOR SWARM\",\n    title: \"RAZOR SWARM\",\n    description:\n        \"Deploy a Blast 1 Razor Swarm in a free area within Sensors.\"\n});\n\nif (!zones?.length)\n    return;\n\nconst zone = zones[0];\nconst template = zone.template;\n\n// -----------------------------------------------------------------------------\n// INITIAL DEPLOYMENT MUST BE IN A FREE AREA\n// -----------------------------------------------------------------------------\n\nconst occupants = api.tokensInTemplate(zone);\n\nif (occupants.length > 0) {\n    const names = occupants\n        .map(token => token.name)\n        .join(\", \");\n\n    await template.delete();\n\n    ui.notifications.warn(\n        `Razor Swarm must be deployed in a free area. ` +\n        `The selected area overlaps: ${names}.`\n    );\n\n    return;\n}\n\n// -----------------------------------------------------------------------------\n// STORE PERSISTENT SWARM STATE\n// -----------------------------------------------------------------------------\n\nconst tier = reactorToken.actor.system.tier ?? 1;\nconst burn = [2, 3, 4][tier - 1] ?? 2;\n\nconst swarmState = {\n    swarmId: foundry.utils.randomID(),\n    ownerActorUuid: reactorToken.actor.uuid,\n    ownerTokenId: reactorToken.id,\n    sourceItemUuid: item.uuid,\n    tier,\n    burn,\n    burnedThisRound: {}\n};\n\n// -----------------------------------------------------------------------------\n// SHARED BURN CODE\n// -----------------------------------------------------------------------------\n// TemplateMacro's targetFilter handles who this runs against.\n// Both whenEntered and whenTurnStart use this same tracker.\n\nconst applyBurn = `\nconst la = game.modules.get(\"lancer-automations\")?.api;\n\nif (!la || !token?.actor)\n    return;\n\nconst swarm = template.getFlag(\"lancer-automations\", \"razorSwarm\");\n\nif (!swarm)\n    return;\n\nconst combat = game.combat;\n\nif (!combat)\n    return;\n\nconst roundKey = \\`\\${combat.id}:\\${combat.round}\\`;\n\nconst burnedThisRound = {\n    ...(swarm.burnedThisRound ?? {})\n};\n\nif (burnedThisRound[token.id] === roundKey)\n    return;\n\n// Record the trigger before applying Burn so the entry and turn-start\n// hooks cannot both apply this swarm's Burn in the same round.\nburnedThisRound[token.id] = roundKey;\n\nawait template.setFlag(\n    \"lancer-automations\",\n    \"razorSwarm\",\n    {\n        ...swarm,\n        burnedThisRound\n    }\n);\n\nconst ownerActor = await fromUuid(swarm.ownerActorUuid);\n\nif (!ownerActor)\n    return;\n\nawait la.executeDamageRoll(\n    ownerActor,\n    [token],\n    swarm.burn,\n    \"Burn\",\n    \"Razor Swarm\",\n    {\n        add_burn: true\n    }\n);\n`;\n\n// -----------------------------------------------------------------------------\n// TEMPLATE ACTIONS\n// -----------------------------------------------------------------------------\n\nconst templateActions = [\n    // Allied NPCs already inside when the template is created gain Soft Cover.\n    {\n        id: foundry.utils.randomID(),\n        trigger: \"whenCreated\",\n        actionType: \"effect\",\n        targetFilter: \"HOSTILE\",\n        asGM: false,\n        code: \"\",\n        macroUuid: \"\",\n        effectName: \"cover_soft\",\n        effectMode: \"apply\"\n    },\n\n    // Allied NPC entering the swarm gains Soft Cover.\n    {\n        id: foundry.utils.randomID(),\n        trigger: \"whenEntered\",\n        actionType: \"effect\",\n        targetFilter: \"HOSTILE\",\n        asGM: false,\n        code: \"\",\n        macroUuid: \"\",\n        effectName: \"cover_soft\",\n        effectMode: \"apply\"\n    },\n\n    // Leaving this swarm removes this template's copy of Soft Cover.\n    {\n        id: foundry.utils.randomID(),\n        trigger: \"whenLeft\",\n        actionType: \"effect\",\n        targetFilter: \"HOSTILE\",\n        asGM: false,\n        code: \"\",\n        macroUuid: \"\",\n        effectName: \"cover_soft\",\n        effectMode: \"remove\"\n    },\n\n    // Destroying/replacing this swarm cleans up its Soft Cover.\n    {\n        id: foundry.utils.randomID(),\n        trigger: \"whenDeleted\",\n        actionType: \"effect\",\n        targetFilter: \"HOSTILE\",\n        asGM: false,\n        code: \"\",\n        macroUuid: \"\",\n        effectName: \"cover_soft\",\n        effectMode: \"remove\"\n    },\n\n    // Enemy enters the swarm for the first time this round.\n    {\n        id: foundry.utils.randomID(),\n        trigger: \"whenEntered\",\n        actionType: \"code\",\n        targetFilter: \"FRIENDLY\",\n        asGM: true,\n        code: applyBurn,\n        macroUuid: \"\",\n        effectName: \"\",\n        effectMode: \"apply\"\n    },\n\n    // Enemy starts their turn in the swarm.\n    {\n        id: foundry.utils.randomID(),\n        trigger: \"whenTurnStart\",\n        actionType: \"code\",\n        targetFilter: \"FRIENDLY\",\n        asGM: true,\n        code: applyBurn,\n        macroUuid: \"\",\n        effectName: \"\",\n        effectMode: \"apply\"\n    }\n];\n\n// Install both the persistent swarm data and TemplateMacro behavior.\nawait template.update({\n    [`flags.${FLAG_SCOPE}.${FLAG_KEY}`]: swarmState,\n    \"flags.templatemacro.actions\": templateActions\n});\n\n// -----------------------------------------------------------------------------\n// REMOVE PREVIOUS SWARM + ITS LINK\n// -----------------------------------------------------------------------------\n\nfor (const oldSwarm of oldSwarms) {\n    const oldState = oldSwarm.getFlag(\n        FLAG_SCOPE,\n        FLAG_KEY\n    );\n\n    if (oldState?.swarmId) {\n        await Sequencer.EffectManager.endEffects({\n            name: `razor-swarm-link-${oldState.swarmId}`\n        });\n    }\n\n    await oldSwarm.delete();\n}\n\n// -----------------------------------------------------------------------------\n// CREATE HIVE → RAZOR SWARM LINK\n// -----------------------------------------------------------------------------\n\nconst linkName = `razor-swarm-link-${swarmState.swarmId}`;\n\nnew Sequence()\n    .effect()\n    .file(\"jb2a.energy_strands.range.standard.orange\")\n    .name(linkName)\n    .attachTo(reactorToken)\n    .stretchTo(template, {\n        attachTo: true\n    })\n    .persist()\n    .play();\n\nconst swarmVisualName =\n    `razor-swarm-visual-${swarmState.swarmId}`;\n\nnew Sequence()\n    .effect()\n    .file(\"jb2a.fireflies.many.01.red\")\n    .name(swarmVisualName)\n    .attachTo(template)\n    .scaleToObject(1, {\n        uniform: true\n    })\n    .belowTokens()\n    .persist()\n    .play();\n\n// -----------------------------------------------------------------------------",
+          "onInit": "",
+          "onMessage": "",
+          "triggerSelf": true,
+          "triggerOther": false,
+          "outOfCombat": true,
+          "dispositionFilter": null
+        },
+        {
+          "reactionPath": "",
+          "triggers": [
+            "onDestroyed"
+          ],
+          "evaluate": "return triggerData.triggeringToken?.id === reactorToken.id;",
+          "comments": "LA 4.1.8 review: current trigger/API usage remains valid. Reviewed against Lancer Automations 4.1.8 defaults and APIs. Razor Swarm cleanup — when the owning Hive is destroyed, end its Sequencer link and delete its Razor Swarm template. TemplateMacro whenDeleted handles Soft Cover cleanup.",
+          "triggerDescription": "",
+          "effectDescription": "When the Hive is destroyed, its Razor Swarm is destroyed.",
+          "isReaction": false,
+          "actionType": "Automation",
+          "frequency": "Unlimited",
+          "checkReaction": false,
+          "requireCanProvoke": false,
+          "checkUsage": false,
+          "autoActivate": true,
+          "awaitActivationCompletion": true,
+          "onlyOnSourceMatch": false,
+          "activationType": "code",
+          "activationMode": "instead",
+          "activationMacro": "",
+          "activationCode": "const FLAG_SCOPE = \"lancer-automations\";\nconst FLAG_KEY = \"razorSwarm\";\n\n// -----------------------------------------------------------------------------\n// FIND ALL RAZOR SWARMS OWNED BY THIS HIVE\n// -----------------------------------------------------------------------------\n\nconst ownedSwarms = canvas.scene.templates.filter(template => {\n    const swarm = template.getFlag(FLAG_SCOPE, FLAG_KEY);\n\n    return swarm?.ownerActorUuid === reactorToken.actor.uuid;\n});\n\nif (!ownedSwarms.length)\n    return;\n\n// -----------------------------------------------------------------------------\n// DESTROY SWARMS + CLEAN UP VISUAL LINKS\n// -----------------------------------------------------------------------------\n\nfor (const template of ownedSwarms) {\n    const swarm = template.getFlag(FLAG_SCOPE, FLAG_KEY);\n\n    if (swarm?.swarmId) {\n        await Sequencer.EffectManager.endEffects({\n            name: `razor-swarm-link-${swarm.swarmId}`\n        });\n        \n        await Sequencer.EffectManager.endEffects({\n    \t\tname: `razor-swarm-visual-${swarm.swarmId}`\n\t\t});\n    }\n    \n\n    // Deleting the template also fires its whenDeleted actions,\n    // which removes any Soft Cover it was providing.\n    await template.delete();\n}",
+          "onInit": "",
+          "onMessage": "",
+          "triggerSelf": true,
+          "triggerOther": false,
+          "outOfCombat": true,
+          "dispositionFilter": null
+        }
+      ]
+    },
+    "npc-rebake_npcf_sanctuary_priest": {
+      "itemType": "any",
+      "reactions": [
+        {
+          "reactionPath": "",
+          "triggers": [
+            "onInitAttack",
+            "onInitTechAttack",
+            "onActivation",
+            "onStatusRemoved",
+            "onDestroyed"
+          ],
+          "evaluate": "if (triggerType === \"onActivation\") {\n    return triggerData.triggeringToken?.id === reactorToken.id &&\n        triggerData.item?.system?.lid === item.system.lid;\n}\n\nif (triggerType === \"onDestroyed\") {\n    return triggerData.triggeringToken?.id === reactorToken.id &&\n        api.findMarkedTokens(\n            reactorToken,\n            \"Sanctuary\",\n            { flagKey: \"sanctuarySourceId\" }\n        ).length > 0;\n}\n\nif (triggerType === \"onStatusRemoved\") {\n    const flags = triggerData.effect?.flags?.[\"lancer-automations\"] ?? {};\n\n    return flags.effect === \"Sanctuary\" &&\n        flags.sanctuarySourceId === reactorToken.id;\n}\n\nif (triggerType === \"onInitAttack\" || triggerType === \"onInitTechAttack\") {\n    if (!triggerData.triggeringToken)\n        return false;\n\n    return triggerData.targets?.some(target =>\n        api.findEffectsOnToken(\n            target,\n            \"Sanctuary\",\n            {\n                extraFlags: {\n                    sanctuarySourceId: reactorToken.id\n                }\n            }\n        ).length > 0\n    ) ?? false;\n}\n\nreturn false;",
+          "comments": "LA 4.1.8 review: current trigger/API usage remains valid. Updated for Lancer Automations 4.1.8. Optional Sequencer/Lancer Weapon FX presentation is guarded so missing FX never blocks mechanics. LA 4.1 Sanctuary implementation. applyMark provides source-stamped protection with native end-of-Priest-next-turn duration. cancelAttack/cancelTechAttack suspend attacks before action expenditure while executeSaveVsEffect resolves the Systems save. Failed attackers receive a source-linked Denied effect until the start of their next turn. Sanctuary and linked Denied effects clean up on expiry, refresh, or Priest destruction.",
+          "triggerDescription": "",
+          "effectDescription": "Choose an allied character within Sensors. Before attacking them, characters must pass a Systems save. On failure, the action is not lost, but they cannot target the protected character again until the start of their next turn. Sanctuary lasts until the Priest is destroyed or the end of the Priest's next turn.",
+          "isReaction": false,
+          "actionType": "Automation",
+          "frequency": "Unlimited",
+          "checkReaction": false,
+          "requireCanProvoke": false,
+          "checkUsage": false,
+          "autoActivate": true,
+          "awaitActivationCompletion": true,
+          "onlyOnSourceMatch": false,
+          "activationType": "code",
+          "activationMode": "instead",
+          "activationMacro": "",
+          "activationCode": "if (triggerType === \"onActivation\") {\n    // Optional presentation layer, following the guarded Sequencer/Lancer Weapon FX pattern used by the Lancer Automations 4.1.8 defaults.\n    try {\n        const rtmFxApi = game.modules.get(\"lancer-weapon-fx\")?.api;\n        if (rtmFxApi && globalThis.Sequencer && typeof Sequence !== \"undefined\") {\n            const rtmFxFiles = [\n                \"modules/lancer-weapon-fx/soundfx/PPC_Charge.ogg\",\n                \"jb2a.shield.01.intro.blue\"\n            ];\n            await Sequencer.Preloader.preloadForClients(rtmFxFiles);\n            await new Sequence()\n                .sound()\n                    .file(rtmFxFiles[0])\n                    .volume(rtmFxApi.getEffectVolume(0.65))\n                .effect()\n                    .file(rtmFxFiles[1])\n                    .atLocation(reactorToken)\n                    .scaleToObject(2)\n                    .filter(\"Glow\", { color: 0x7a9cff })\n                    .play();\n        }\n    }\n    catch (error) {\n        console.warn(\"Road to Midnight automation FX skipped; mechanics continue normally.\", error);\n    }\n    \n    \n}\n\n// -----------------------------------------------------------------------------\n// HELPERS\n// -----------------------------------------------------------------------------\n\nconst sceneTokens = canvas.tokens.placeables;\n\nconst cleanupDenied = async sanctuaryId => {\n    if (!sanctuaryId)\n        return;\n\n    await api.removeEffectsByNameFromTokens({\n        tokens: sceneTokens,\n        effectNames: [\"Sanctuary Denied\"],\n        extraFlags: {\n            sanctuaryId\n        },\n        notify: false\n    });\n};\n\n// -----------------------------------------------------------------------------\n// SANCTUARY REMOVED\n// -----------------------------------------------------------------------------\n// This catches every way Sanctuary can end:\n//\n// - native end-of-next-turn expiry\n// - refreshing/replacing the mark\n// - destruction cleanup\n//\n// Any Denied marker belonging to that Sanctuary instance ends with it.\n\nif (triggerType === \"onStatusRemoved\") {\n    const flags =\n        triggerData.effect?.flags?.[\"lancer-automations\"] ?? {};\n\n    await cleanupDenied(flags.sanctuaryId);\n    return;\n}\n\n// -----------------------------------------------------------------------------\n// PRIEST DESTROYED\n// -----------------------------------------------------------------------------\n// Sanctuary explicitly ends when its Priest is destroyed.\n\nif (triggerType === \"onDestroyed\") {\n    const markedTokens = api.findMarkedTokens(\n        reactorToken,\n        \"Sanctuary\",\n        {\n            flagKey: \"sanctuarySourceId\"\n        }\n    );\n\n    // Collect the instance IDs before deleting the marks so their related\n    // Denied effects can also be removed immediately.\n    const sanctuaryIds = markedTokens.flatMap(target =>\n        api.findEffectsOnToken(\n            target,\n            \"Sanctuary\",\n            {\n                extraFlags: {\n                    sanctuarySourceId: reactorToken.id\n                }\n            }\n        )\n        .map(effect =>\n            effect.flags?.[\"lancer-automations\"]?.sanctuaryId\n        )\n        .filter(Boolean)\n    );\n\n    for (const sanctuaryId of sanctuaryIds)\n        await cleanupDenied(sanctuaryId);\n\n    await api.clearMarks(\n        reactorToken,\n        \"Sanctuary\",\n        {\n            flagKey: \"sanctuarySourceId\"\n        }\n    );\n\n    return;\n}\n\n// -----------------------------------------------------------------------------\n// APPLY SANCTUARY\n// -----------------------------------------------------------------------------\n\nif (triggerType === \"onActivation\") {\n    const targets = await api.chooseToken(reactorToken, {\n        range: reactorToken.actor.system.sensor_range,\n        count: 1,\n        filter: token => api.isFriendly(reactorToken, token),\n        filterWarning: \"Sanctuary must target an allied character.\",\n        soft: false,\n        includeSelf: true,\n        title: \"SANCTUARY\",\n        description: \"Choose an allied character within Sensors to protect with Sanctuary.\"\n    });\n\n    if (!targets?.length)\n        return;\n\n    const target = targets[0];\n\n    // -------------------------------------------------------------------------\n    // REFRESH THIS PRIEST'S SANCTUARY ON THIS TARGET\n    // -------------------------------------------------------------------------\n    // Other Priests' Sanctuary effects are independent and remain untouched.\n\n    const oldSanctuaries = api.findEffectsOnToken(\n        target,\n        \"Sanctuary\",\n        {\n            extraFlags: {\n                sanctuarySourceId: reactorToken.id\n            }\n        }\n    );\n\n    for (const oldSanctuary of oldSanctuaries) {\n        const oldId =\n            oldSanctuary.flags?.[\"lancer-automations\"]?.sanctuaryId;\n\n        await cleanupDenied(oldId);\n        await api.deleteEffect(target, oldSanctuary);\n    }\n\n    // -------------------------------------------------------------------------\n    // APPLY NEW SANCTUARY MARK\n    // -------------------------------------------------------------------------\n    // turns: 1 + label: \"end\" + Priest as duration origin means:\n    //\n    //     END OF THE PRIEST'S NEXT TURN\n    //\n    // LA 4.1 handles the current-turn adjustment internally.\n\n    const sanctuaryId = foundry.utils.randomID();\n\n    await api.applyMark(\n        reactorToken,\n        [target],\n        {\n            effect: {\n                name: \"Sanctuary\",\n                icon: item.img,\n                isCustom: true\n            },\n\n            note: `Protected by ${reactorToken.name}. Characters must pass a Systems save before attacking this character.`,\n\n            duration: {\n                label: \"end\",\n                turns: 1,\n                rounds: 0,\n                overrideTurnOriginId: reactorToken.id\n            },\n\n            flagKey: \"sanctuarySourceId\",\n\n            extraOptions: {\n                sanctuaryId,\n                sanctuaryTargetTokenId: target.id\n            }\n        }\n    );\n\n    return;\n}\n\n// -----------------------------------------------------------------------------\n// ATTACK GATE\n// -----------------------------------------------------------------------------\n// IMPORTANT:\n// cancelAttack/cancelTechAttack must be invoked synchronously, BEFORE any await.\n// Their async preConfirm callback is then allowed to perform the Systems save.\n\nif (triggerType === \"onInitAttack\" || triggerType === \"onInitTechAttack\") {\n    const attacker = triggerData.triggeringToken;\n\n    if (!attacker)\n        return;\n\n    // Collect every target of this attack protected by THIS Priest.\n    const protectedTargets = [];\n\n    for (const target of triggerData.targets ?? []) {\n        const sanctuaries = api.findEffectsOnToken(\n            target,\n            \"Sanctuary\",\n            {\n                extraFlags: {\n                    sanctuarySourceId: reactorToken.id\n                }\n            }\n        );\n\n        for (const sanctuary of sanctuaries) {\n            protectedTargets.push({\n                target,\n                sanctuary,\n                flags: sanctuary.flags?.[\"lancer-automations\"] ?? {}\n            });\n        }\n    }\n\n    if (!protectedTargets.length)\n        return;\n\n    const cancelAttack = triggerType === \"onInitAttack\"\n        ? triggerData.cancelAttack\n        : triggerData.cancelTechAttack;\n\n    const userIdControl = api.getTokenOwnerUserId(attacker);\n\n    // -------------------------------------------------------------------------\n    // ALREADY DENIED\n    // -------------------------------------------------------------------------\n    // If this attacker already failed against one of these Sanctuary instances,\n    // they cannot target that protected character again until their next turn.\n\n    const alreadyDenied = protectedTargets.find(entry =>\n        api.findEffectsOnToken(\n            attacker,\n            \"Sanctuary Denied\",\n            {\n                extraFlags: {\n                    sanctuaryId: entry.flags.sanctuaryId\n                }\n            }\n        ).length > 0\n    );\n\n    if (alreadyDenied) {\n        ui.notifications.warn(\n            `${attacker.name} cannot target ${alreadyDenied.target.name} until the start of their next turn.`\n        );\n\n        cancelAttack(\n            `${attacker.name} has already failed Sanctuary and cannot target ${alreadyDenied.target.name} again this turn. The action is not spent.`,\n            \"SANCTUARY\",\n            false,\n            userIdControl,\n            null,\n            null,\n            {\n                item,\n                originToken: reactorToken,\n                relatedToken: alreadyDenied.target\n            }\n        );\n\n        return;\n    }\n\n    // -------------------------------------------------------------------------\n    // SYSTEMS SAVE\n    // -------------------------------------------------------------------------\n    // preConfirm executes while the original attack is safely suspended.\n    //\n    // RETURN FALSE = save passed -> LA re-runs the original attack and skips\n    // this reactor on the retry.\n    //\n    // RETURN TRUE = save failed -> original attack stays cancelled and its\n    // action is not spent.\n\n    const sanctuarySave = async () => {\n        for (const entry of protectedTargets) {\n            const sanctuaryId = entry.flags.sanctuaryId;\n\n            if (!sanctuaryId)\n                continue;\n\n            const results = await api.executeSaveVsEffect(\n                attacker,\n                {\n                    stat: \"SYS\",\n                    title: \"Sanctuary\",\n                    origin: reactorToken,\n\n                    effects: {\n                        name: \"Sanctuary Denied\",\n                        icon: item.img,\n                        isCustom: true\n                    },\n\n                    // turns: 0 + start means exactly the start of the attacker's\n                    // next turn. No manual _preAdjusted handling is required.\n                    duration: {\n                        label: \"start\",\n                        turns: 0,\n                        rounds: 0,\n                        overrideTurnOriginId: attacker.id\n                    },\n\n                    note: `Cannot target ${entry.target.name} again until the start of ${attacker.name}'s next turn.`,\n\n                    extraFlags: {\n                        sanctuaryId,\n                        sanctuarySourceId: reactorToken.id,\n                        sanctuaryTargetTokenId: entry.target.id\n                    },\n\n                    cardTitle: \"SANCTUARY\",\n                    cardDescription: `${attacker.name} must pass a Systems save against ${reactorToken.name} before attacking ${entry.target.name}.`,\n                    sendToOwner: true,\n\n                    onFail: async () => {\n                        ui.notifications.warn(\n                            `${attacker.name} failed Sanctuary against ${entry.target.name}. The attack is cancelled, but the action is not spent.`\n                        );\n\n                    }\n                }\n            );\n\n            const result = results[0];\n\n            // A cancelled/uncompleted save also leaves the attack safely\n            // cancelled rather than allowing it through without a result.\n            if (!result?.result?.completed)\n                return true;\n\n            if (!result.passed)\n                return true;\n        }\n\n        // All required Sanctuary saves passed.\n        return false;\n    };\n\n    cancelAttack(\n        `A Systems save is required before ${attacker.name} can attack a character protected by Sanctuary.`,\n        \"SANCTUARY\",\n        false,\n        userIdControl,\n        sanctuarySave,\n        null,\n        {\n            item,\n            originToken: reactorToken,\n            relatedToken: protectedTargets[0].target\n        }\n    );\n}",
+          "onInit": "",
+          "onMessage": "",
+          "triggerSelf": true,
+          "triggerOther": true,
+          "outOfCombat": true,
+          "dispositionFilter": null
+        }
+      ]
+    },
+    "npc-rebake_npcf_suppress_archer": {
+      "itemType": "npc_feature",
+      "reactions": [
+        {
+          "reactionPath": "",
+          "triggers": [
+            "onActivation",
+            "onDamage",
+            "onStatusApplied",
+            "onDestroyed",
+            "onUpdate",
+            "onExitCombat"
+          ],
+          "evaluate": "const source = triggerData.triggeringToken ?? triggerData.token;\nconst targetId = api.getActorFlags(reactorToken.actor, \"suppressTargetId\");\n\nif (triggerType === \"onActivation\") {\n    return source?.id === reactorToken.id\n        && triggerData.item?.id === item.id\n        && triggerData.item?.system?.lid === item.system?.lid;\n}\n\nif (!targetId)\n    return false;\n\nif (triggerType === \"onDamage\") {\n    const damageTotal = (triggerData.damages ?? []).reduce(\n        (sum, value) => sum + Math.max(0, Number(value) || 0),\n        0\n    );\n    return source?.id === targetId\n        && triggerData.target?.id === reactorToken.id\n        && damageTotal > 0;\n}\n\nif (triggerType === \"onStatusApplied\") {\n    if (source?.id !== reactorToken.id)\n        return false;\n    const status = (\n        String(triggerData.statusId ?? \"\") + \" \" + String(triggerData.effect?.name ?? \"\")\n    ).toLowerCase();\n    return status.includes(\"jammed\") || status.includes(\"stunned\");\n}\n\nif (triggerType === \"onDestroyed\")\n    return source?.id === reactorToken.id || source?.id === targetId;\n\nif (triggerType === \"onExitCombat\")\n    return source?.id === reactorToken.id;\n\nif (triggerType === \"onUpdate\") {\n    if (source?.id !== reactorToken.id && source?.id !== targetId)\n        return false;\n    const change = triggerData.change ?? {};\n    const moved = Object.prototype.hasOwnProperty.call(change, \"x\")\n        || Object.prototype.hasOwnProperty.call(change, \"y\")\n        || Object.prototype.hasOwnProperty.call(change, \"elevation\");\n    if (!moved)\n        return false;\n    const target = canvas.tokens.get(targetId);\n    return !target || !api.hasLineOfSight(reactorToken, target);\n}\n\nreturn false;",
+          "comments": "LA 4.1.8 implementation: selects one hostile target within Range 10 and line of sight, applies source-stamped Suppress and Impaired effects, exposes a Free end action, and cleans up on every listed termination condition.",
+          "triggerDescription": "",
+          "effectDescription": "Choose a target within line of sight and Range 10. They become Impaired and enable Moving Target until the link ends.",
+          "isReaction": false,
+          "actionType": "Quick Action",
+          "frequency": "Unlimited",
+          "checkReaction": false,
+          "requireCanProvoke": false,
+          "checkUsage": false,
+          "autoActivate": true,
+          "awaitActivationCompletion": true,
+          "onlyOnSourceMatch": false,
+          "activationType": "code",
+          "activationMode": "instead",
+          "activationMacro": "",
+          "activationCode": "const getSuppressTargets = () => {\n    const targetId = api.getActorFlags(reactorToken.actor, \"suppressTargetId\");\n    const flagged = targetId ? canvas.tokens.get(targetId) : null;\n    const marked = api.findMarkedTokens(\n        reactorToken,\n        \"Suppress\",\n        { flagKey: \"suppressSourceId\" }\n    );\n    return [...new Map(\n        [flagged, ...marked].filter(Boolean).map(token => [token.id, token])\n    ).values()];\n};\n\nconst clearSuppress = async () => {\n    const targets = getSuppressTargets();\n    if (targets.length) {\n        await api.removeEffectsByNameFromTokens({\n            tokens: targets,\n            effectNames: [\"Suppress\", \"impaired\"],\n            extraFlags: { suppressSourceId: reactorToken.id },\n            notify: false\n        });\n    }\n    await api.removeActorFlags(reactorToken.actor, {\n        suppressTargetId: true,\n        suppressLosLost: true\n    });\n};\n\nconst endSuppress = async () => {\n    await clearSuppress();\n    const active = api.getActivatedItems(reactorToken).some(activeItem => activeItem.id === item.id);\n    if (active)\n        await api.endItemActivation(item, reactorToken);\n};\n\nif (triggerType === \"onActivation\") {\n    if (triggerData.endActivation) {\n        await clearSuppress();\n        return;\n    }\n\n    const targets = await api.chooseToken(reactorToken, {\n        range: 10,\n        count: 1,\n        includeSelf: false,\n        disposition: \"hostile\",\n        soft: false,\n        autoConfirm: true,\n        title: \"SUPPRESS\",\n        description: \"Choose a hostile target within line of sight and Range 10.\",\n        icon: \"fas fa-crosshairs\",\n        filter: target => api.hasLineOfSight(reactorToken, target),\n        filterWarning: \"Suppress requires line of sight.\"\n    });\n    const target = targets?.[0];\n    if (!target)\n        return;\n\n    // Selecting a new valid target ends the previous Suppress first.\n    await clearSuppress();\n\n    await api.applyEffectsToTokens({\n        tokens: [target],\n        effectNames: [\n            { name: \"Suppress\", icon: item.img, isCustom: true },\n            \"impaired\"\n        ],\n        note: \"Suppressed by \" + reactorToken.name,\n        duration: { label: \"indefinite\" }\n    }, {\n        suppressSourceId: reactorToken.id,\n        suppressSourceItemId: item.id\n    });\n\n    await api.addActorFlags(reactorToken.actor, {\n        suppressTargetId: target.id\n    });\n\n    await api.setItemAsActivated(\n        item,\n        reactorToken,\n        \"Free\",\n        \"End Suppress\"\n    );\n    return;\n}\n\nawait endSuppress();",
+          "onInit": "const targetId = api.getActorFlags(token.actor, \"suppressTargetId\");\nif (!targetId)\n    return;\nconst target = canvas.tokens.get(targetId);\nif (!target || !api.hasLineOfSight(token, target)) {\n    if (target) {\n        await api.removeEffectsByNameFromTokens({\n            tokens: [target],\n            effectNames: [\"Suppress\", \"impaired\"],\n            extraFlags: { suppressSourceId: token.id },\n            notify: false\n        });\n    }\n    await api.removeActorFlags(token.actor, {\n        suppressTargetId: true,\n        suppressLosLost: true\n    });\n    const active = api.getActivatedItems(token).some(activeItem => activeItem.id === item.id);\n    if (active)\n        await api.endItemActivation(item, token);\n}",
+          "onMessage": "",
+          "triggerSelf": true,
+          "triggerOther": true,
+          "outOfCombat": true,
+          "dispositionFilter": null
+        }
+      ]
+    },
+    "npcf_moving_target_archer": {
+      "itemType": "npc_feature",
+      "reactions": [
+        {
+          "enabled": false
+        },
+        {
+          "enabled": false
+        }
+      ]
+    },
+    "npcf_moving_target_sniper": {
+      "itemType": "npc_feature",
+      "reactions": [
+        {
+          "enabled": false
+        }
+      ]
+    },
+    "npcf_rapid_response_archer": {
+      "itemType": "any",
+      "reactions": [
+        {
+          "reactionPath": "",
+          "triggers": [
+            "onMove"
+          ],
+          "evaluate": "const mover = triggerData.triggeringToken;\n\nif (!mover)\n    return false;\n\n// Rapid Response only triggers from hostile characters.\nif (!api.isHostile(reactorToken, mover))\n    return false;\n\n// Involuntary movement and teleportation do not provoke reactions.\nif (\n    triggerData.moveInfo?.isInvoluntary ||\n    triggerData.moveInfo?.isTeleport ||\n    triggerData.moveInfo?.isUndo\n)\n    return false;\n\n// The Archer must actually be capable of taking the granted Boost.\nconst cannotBoost =\n    api.findEffectOnToken(reactorToken, \"slow\") ||\n    api.findEffectOnToken(reactorToken, \"immobilized\") ||\n    api.findEffectOnToken(reactorToken, \"grappled\") ||\n    api.findEffectOnToken(reactorToken, \"jammed\") ||\n    api.findEffectOnToken(reactorToken, \"stunned\");\n\nif (cannotBoost)\n    return false;\n\n// The triggering enemy must be in line of sight after their movement.\nreturn api.hasLineOfSight(reactorToken, mover);",
+          "comments": "LA 4.1.8 revision: automation-level checkUsage is disabled for this Reaction. Its native 1/round item usage is authoritative; the voluntary hostile movement, line-of-sight, reaction availability, and Boost flow remain unchanged.",
+          "triggerDescription": "An enemy character in line of sight moves.",
+          "effectDescription": "The Archer may <strong>Boost</strong>.",
+          "isReaction": true,
+          "actionType": "Reaction",
+          "frequency": "1/Round",
+          "checkReaction": true,
+          "requireCanProvoke": true,
+          "checkUsage": false,
+          "autoActivate": false,
+          "awaitActivationCompletion": true,
+          "onlyOnSourceMatch": false,
+          "activationType": "code",
+          "activationMode": "after",
+          "activationMacro": "",
+          "activationCode": "const speed = Number(reactorToken.actor.system.speed ?? 0);\n\nif (speed <= 0)\n    return;\n\n// -----------------------------------------------------------------------------\n// RAPID RESPONSE — BOOST\n// -----------------------------------------------------------------------------\n// Fire a real Boost activation through Lancer Automations. It is labelled as\n// a Reaction here because Rapid Response grants the Boost without spending the\n// Archer's normal Quick Action.\n//\n// This also lets any other automation that reacts to the Archer using Boost\n// recognize Rapid Response as an actual Boost rather than generic free movement.\n\nconst boost = await api.executeSimpleActivation(\n    reactorToken.actor,\n    {\n        title: \"Boost\",\n        action: {\n            name: \"Boost\",\n            activation: \"Reaction\"\n        },\n        detail: \"Rapid Response: Boost up to your Speed.\"\n    },\n    {\n        rapidResponse: true,\n        rapidResponseSourceItemId: item.id\n    }\n);\n\nif (!boost?.completed)\n    return;\n\n// The native Boost activation grants the additional movement allowance.\n// Immediately provide the interactive movement picker so Rapid Response can\n// be resolved in one operation. Movement uses its real cost rather than cost 0,\n// allowing movement history/cap tracking to treat it normally.\nconst moved = await api.moveToken(reactorToken, {\n    range: speed,\n    title: \"RAPID RESPONSE\",\n    description: `Boost up to ${speed} spaces.`\n});\n\nif (!moved)\n    return;\n\n// -----------------------------------------------------------------------------",
+          "onInit": "",
+          "onMessage": "",
+          "triggerSelf": false,
+          "triggerOther": true,
+          "outOfCombat": false,
+          "dispositionFilter": null
+        }
+      ]
+    },
+    "npcf_suppress_archer": {
+      "itemType": "npc_feature",
+      "reactions": [
+        {
+          "enabled": false
+        }
+      ]
+    }
+  },
+  "generalReactions": {
+    "Abjure - Attack Roll Heat": {
+      "triggers": [
+        "onRoll"
+      ],
+      "evaluate": "if (![\"attackRoll\", \"techAttackRoll\"].includes(triggerData.rollType))\n    return false;\n\n// A reroll/changeRoll re-fires onRoll for the same attack flow.\n// Abjure should only charge Heat once for each actual attack roll.\nif (api.getFlowFlag(triggerData, \"abjureAttackHeatApplied\"))\n    return false;\n\nreturn api.findEffectsOnToken(\n    reactorToken,\n    \"Abjure\",\n    { hasFlags: [\"abjureHeat\"] }\n).some(effect =>\n    Number(effect.flags?.[\"lancer-automations\"]?.abjureHeat ?? 0) > 0\n);",
+      "comments": "LA 4.1.8 review: current trigger/API usage remains valid. Reviewed against Lancer Automations 4.1.8 defaults and APIs. Reads the Heat stored on active Abjure effects. Each individual attack roll causes a separate Heat application; rerolls/changeRoll do not trigger additional Heat.",
+      "triggerDescription": "",
+      "effectDescription": "Characters affected by Abjure take the stored tier-scaled Heat each time they make an attack roll.",
+      "isReaction": false,
+      "actionType": "Automation",
+      "frequency": "Unlimited",
+      "checkReaction": false,
+      "requireCanProvoke": false,
+      "checkUsage": false,
+      "autoActivate": true,
+      "awaitActivationCompletion": true,
+      "onlyOnSourceMatch": false,
+      "activationType": "code",
+      "activationMode": "instead",
+      "activationMacro": "",
+      "activationCode": "// -----------------------------------------------------------------------------\n// ONCE PER ATTACK FLOW\n// -----------------------------------------------------------------------------\n// Stamp the attack flow so rerolls/changeRoll do not trigger Abjure Heat again.\n\napi.setFlowFlag(\n    triggerData,\n    \"abjureAttackHeatApplied\"\n);\n\n// -----------------------------------------------------------------------------\n// FIND ACTIVE ABJURE EFFECTS\n// -----------------------------------------------------------------------------\n\nconst abjures = api.findEffectsOnToken(\n    reactorToken,\n    \"Abjure\",\n    { hasFlags: [\"abjureHeat\"] }\n).filter(effect =>\n    Number(effect.flags?.[\"lancer-automations\"]?.abjureHeat ?? 0) > 0\n);\n\n// -----------------------------------------------------------------------------\n// COUNT ATTACK ROLLS\n// -----------------------------------------------------------------------------\n// onRoll fires once for the overall attack flow. A multi-target attack contains\n// one target result for each individual attack roll, and Abjure triggers for\n// EACH of those rolls.\n\nconst rollCount = Math.max(\n    1,\n    triggerData.targets?.length ?? 0\n);\n\n// -----------------------------------------------------------------------------\n// APPLY ABJURE HEAT\n// -----------------------------------------------------------------------------\n// Attribution is intentionally unimportant here. The affected character is\n// used as both the damage-flow source and target.\n\nfor (const effect of abjures) {\n    const heat = Number(\n        effect.flags[\"lancer-automations\"].abjureHeat\n    );\n\n    for (let i = 0; i < rollCount; i++) {\n        await api.executeDamageRoll(\n            reactorToken,\n            [reactorToken],\n            heat,\n            \"Heat\",\n            \"Abjure\"\n        );\n    }\n}",
+      "onInit": "",
+      "onMessage": "",
+      "triggerSelf": true,
+      "triggerOther": false,
+      "outOfCombat": true,
+      "dispositionFilter": null
+    },
+    "Engagement Interrupt Movement": {
+      "reactions": [
+        {
+          "enabled": true
+        }
+      ]
+    },
+    "Overwatch": {
+      "reactions": [
+        {
+          "enabled": true
+        }
+      ]
+    },
+    "Follower Count Boost": {
+      "reactionPath": "",
+      "triggers": [
+        "onActivation"
+      ],
+      "evaluate": "if (triggerData.actionName !== \"Follower Count Boost\")\n    return false;\nif (triggerData.triggeringToken?.id !== reactorToken.id)\n    return false;\nreturn !!api.getActorFlags(reactorToken.actor, \"followerCountTargetId\");",
+      "comments": "LA 4.1.8 revision: exact-name actor Boost activation with advisory movement text only. onlyOnSourceMatch keeps dispatch tied to Follower Count Boost, and the explicit evaluator also verifies the triggering Breacher and active target. No movement hook restricts the path.",
+      "triggerDescription": "",
+      "effectDescription": "Move up to Speed directly toward the active Follower Count target.",
+      "isReaction": false,
+      "actionType": "Free Action",
+      "frequency": "Unlimited",
+      "checkReaction": false,
+      "requireCanProvoke": false,
+      "checkUsage": false,
+      "autoActivate": true,
+      "awaitActivationCompletion": true,
+      "onlyOnSourceMatch": true,
+      "activationType": "code",
+      "activationMode": "instead",
+      "activationMacro": "",
+      "activationCode": "const turnKey = game.combat?.started\n    ? game.combat.id + \":\" + game.combat.round + \":\" + game.combat.turn\n    : null;\nconst usedTurnKey = api.getActorFlags(\n    reactorToken.actor,\n    \"followerCountBoostUsedTurnKey\"\n);\n\nif (turnKey && usedTurnKey === turnKey) {\n    ui.notifications.warn(\"Follower Count Boost has already been used this turn.\");\n    return;\n}\n\nconst targetId = api.getActorFlags(reactorToken.actor, \"followerCountTargetId\");\nconst target = targetId ? canvas.tokens.get(targetId) : null;\n\nif (!target) {\n    ui.notifications.warn(\"Follower Count: \" + reactorToken.name + \" no longer has a valid target.\");\n    return;\n}\n\nif (api.findEffectOnToken(reactorToken, \"immobilized\")) {\n    ui.notifications.warn(\"Follower Count: \" + reactorToken.name + \" is Immobilized and cannot Boost.\");\n    return;\n}\n\nconst moved = await api.moveToken(reactorToken, {\n    range: Number(reactorToken.actor.system.speed ?? 0),\n    cost: 0,\n    title: \"FOLLOWER COUNT BOOST\",\n    description: \"Move up to Speed. Reminder: finish as close to \" + target.name + \" as possible.\"\n});\n\nif (!moved)\n    return;\n\nif (turnKey) {\n    await api.addActorFlags(reactorToken.actor, {\n        followerCountBoostUsedTurnKey: turnKey\n    });\n}",
+      "onInit": "",
+      "onMessage": "",
+      "triggerSelf": true,
+      "triggerOther": false,
+      "outOfCombat": false,
+      "dispositionFilter": null
+    }
+  },
+  "startupScripts": []
+}
